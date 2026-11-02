@@ -1028,7 +1028,7 @@ async function main(): Promise<void> {
     updates.dispose()
   })
 
-  const applicationIconPath = development ? join(app.getAppPath(), 'resources', 'codecrew-mark.png')
+  const applicationIconPath = development ? join(app.getAppPath(), 'resources', 'icon-macos.png')
     : join(process.resourcesPath, 'icon.png')
   if (development) app.dock?.setIcon(applicationIconPath)
   app.setAboutPanelOptions({

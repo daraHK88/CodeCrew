@@ -1,0 +1,1 @@
+Built-in imagegen edit of codecrew-mark.png: preserve the code brackets and connected three-node AI slash; make the mark white on a fully opaque cobalt-blue square background, with padding, crisp flat shapes, no text or extra symbols. Native application icon.

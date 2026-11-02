@@ -2,7 +2,7 @@
 
 [English](README.md) | 中文
 
-<img src="coding/brand/codecrew-mark.png" alt="CodeCrew 代码与 AI 标志" width="120" height="120">
+<img src="coding/brand/codecrew-app-icon.png" alt="CodeCrew 代码与 AI 标志" width="120" height="120">
 
 CodeCrew 是专注编码的 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) fork，提供可编辑模型配置、主管协调的 agent、自动技能选择，以及通用和工作区记忆。
 

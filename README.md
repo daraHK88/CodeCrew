@@ -2,7 +2,7 @@
 
 English | [中文](README.zh.md)
 
-<img src="coding/brand/codecrew-mark.png" alt="CodeCrew code and AI mark" width="120" height="120">
+<img src="coding/brand/codecrew-app-icon.png" alt="CodeCrew code and AI mark" width="120" height="120">
 
 CodeCrew is a coding-focused fork of [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness). It combines editable model profiles, supervised agents, automatic skill selection, and general and workspace memory.
 

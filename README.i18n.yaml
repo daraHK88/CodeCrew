@@ -3,8 +3,8 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write README.md
 /codecrew:
-  en: 60c91b974d2c6bff
-  zh: 911aacb55f9dcfe5
+  en: 94e042e6fd562061
+  zh: 0a0ee3f000d6b15b
 /codecrew/run-from-source:
   en: de632bec4421a670
   zh: a969b206d78c71b6

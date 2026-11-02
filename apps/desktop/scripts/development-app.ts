@@ -1,7 +1,7 @@
 /** macOS development bundle that loads the current workspace through Electron. */
 import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { copyFileSync, existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 
 /** Workspace and runtime settings captured for Launch Services cold starts. */
@@ -31,7 +31,9 @@ export function prepareDevelopmentApp(options: DevelopmentAppOptions): string {
   const executable = join(bundle, 'Contents', 'MacOS', 'CodeCrew')
   const stamp = join(bundle, 'Contents', 'Resources', 'dsh-development.json')
   const launcher = developmentLauncher(options, bundle)
-  const identity = JSON.stringify({ ...options, launcher, plist: readFileSync(join(source, 'Contents', 'Info.plist'), 'utf8') })
+  const icon = join(options.appRoot, 'resources', 'codecrew.icns')
+  const iconDigest = createHash('sha256').update(readFileSync(icon)).digest('hex')
+  const identity = JSON.stringify({ ...options, launcher, iconDigest, plist: readFileSync(join(source, 'Contents', 'Info.plist'), 'utf8') })
   if (!existsSync(stamp) || readFileSync(stamp, 'utf8') !== identity) {
     rmSync(bundle, { recursive: true, force: true })
     execFileSync('/usr/bin/ditto', [source, bundle])
@@ -41,11 +43,13 @@ export function prepareDevelopmentApp(options: DevelopmentAppOptions): string {
       CFBundleName: 'CodeCrew',
       CFBundleDisplayName: 'CodeCrew',
       CFBundleExecutable: 'CodeCrew',
+      CFBundleIconFile: 'codecrew.icns',
       CFBundleURLTypes: [{ CFBundleURLName: 'CodeCrew', CFBundleURLSchemes: ['codecrew'], CFBundleTypeRole: 'Viewer' }],
     }
     for (const [key, value] of Object.entries(values)) {
       execFileSync('/usr/bin/plutil', ['-replace', key, '-json', JSON.stringify(value), plist])
     }
+    copyFileSync(icon, join(bundle, 'Contents', 'Resources', 'codecrew.icns'))
     writeFileSync(executable, launcher, { mode: 0o755 })
     writeFileSync(stamp, identity, { mode: 0o600 })
     execFileSync('/usr/bin/codesign', ['--force', '--deep', '--sign', '-', bundle], { stdio: 'pipe' })
