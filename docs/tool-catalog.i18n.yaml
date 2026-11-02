@@ -219,8 +219,8 @@
   en: 927a5ac0974b7642
   zh: 927a5ac0974b7642
 /tool-schema-catalog/deepseek-ai-dsh-tool-skill/skill:
-  en: 9b159d5831855afb
-  zh: 275ee82af0e0f59a
+  en: a015946d499d8a16
+  zh: 71c1b66995195120
 /tool-schema-catalog/deepseek-ai-dsh-tool-session-query:
   en: eac1dff4b6d9e195
   zh: eac1dff4b6d9e195
@@ -282,8 +282,8 @@
   en: 6b1106f417b50db6
   zh: 6b1106f417b50db6
 /tool-schema-catalog/deepseek-ai-dsh-experimental-tool-agent-team/coding-decide:
-  en: 93984add30a6b77e
-  zh: 8a8a4f2ed593cecd
+  en: 8a6ce40df4664d8e
+  zh: 7452061e6c248abc
 /tool-schema-catalog/deepseek-ai-dsh-experimental-tool-agent-team/interrupt-agent:
   en: c3c7af05ceb9f8c9
   zh: ec379e0b42110c6a

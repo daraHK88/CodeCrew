@@ -1796,7 +1796,7 @@ lsp 工具将提供方选择和语言服务器子进程置于 ctx.lsp 之后，�
 
 ### `skill`
 
-加载某项 skill（技能）的完整说明。在执行点名某项 skill 或与会话 skill 目录中某项 skill 明确匹配的任务前，请调用此工具。
+在执行明确指向目录技能的任务之前加载完整指令。自动注入的指令已经加载；除非需要刷新，否则不要重复加载。
 
 ```json
 {
@@ -2309,7 +2309,7 @@ subagent_oar 工具在为外部提供方配置的别名之间选择。本目录�
 
 ### `coding_decide`
 
-针对小范围有限选项向有预算限制的决策顾问征求建议。返回结果不代表权限、验证证据或任务完成。
+询问类型化的选项、是非或量表问题。可选模板评估审查风险、测试覆盖、规则、浏览器进展和压缩就绪状态。显式工作区文件可在不返回正文的情况下进行判断。批量提问；精确查询使用 grep。建议不代表权限或验证。
 
 ```json
 {
@@ -2318,6 +2318,26 @@ subagent_oar 工具在为外部提供方配置的别名之间选择。本目录�
     "context": {
       "type": "string",
       "description": "Short task, constraints and relevant evidence. No transcript or secrets."
+    },
+    "recipe": {
+      "type": "string",
+      "description": "Use a fixed question set; custom requires questions.",
+      "enum": [
+        "custom",
+        "review",
+        "coverage",
+        "rules",
+        "browser",
+        "compaction",
+        "rank_files"
+      ]
+    },
+    "files": {
+      "type": "array",
+      "description": "Explicit workspace files to send to the decision model instead of loading their text here; no globs, secret files, or paths outside the workspace.",
+      "items": {
+        "type": "string"
+      }
     },
     "questions": {
       "type": "array",
@@ -2330,6 +2350,22 @@ subagent_oar 工具在为外部提供方配置的别名之间选择。本目录�
           },
           "question": {
             "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "description": "Defaults to choice. Noul returns probability of yes; score rates ordered levels.",
+            "enum": [
+              "choice",
+              "noul",
+              "score"
+            ]
+          },
+          "levels": {
+            "type": "array",
+            "description": "Two to ten ordered rubric levels for score only.",
+            "items": {
+              "type": "string"
+            }
           },
           "options": {
             "type": "array",
@@ -2353,8 +2389,7 @@ subagent_oar 工具在为外部提供方配置的别名之间选择。本目录�
         },
         "required": [
           "id",
-          "question",
-          "options"
+          "question"
         ]
       }
     },
@@ -2364,8 +2399,7 @@ subagent_oar 工具在为外部提供方配置的别名之间选择。本目录�
     }
   },
   "required": [
-    "context",
-    "questions"
+    "context"
   ]
 }
 ```
@@ -2480,7 +2514,7 @@ subagent_oar 工具在为外部提供方配置的别名之间选择。本目录�
     },
     "model_profile": {
       "type": "string",
-      "description": "Approved worker profile from global coding-team settings; omission uses its default."
+      "description": "Approved worker profile from global coding-team settings; omission uses optional automatic routing or the configured default."
     },
     "task_id": {
       "type": "string",

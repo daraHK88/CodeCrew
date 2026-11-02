@@ -124,7 +124,7 @@ The `settings.models.sign-in` slot lets account login offer a choice before the 
 
 ## Coding policy
 
-When the global `coding-settings` plugin is mounted, Settings exposes a Coding page for the global default model, approved worker routes, scoped-task policy, automatic skills, memory and parallel tool calls. Model choices come from the live provider catalog. Each mutation uses the existing fenced settings form and reports saving, success or failure. Per-chat model choices do not save this global default.
+When the global `coding-settings` plugin is mounted, Settings exposes a Coding page for the global default model, approved worker routes, scoped-task policy, automatic skills, memory and parallel tool calls. Model choices come from the live provider catalog. Each mutation uses the existing fenced settings form and reports saving, success or failure. Per-chat model choices do not save this global default. Decision advisor controls separately enable Jev skill fallback, automatic unpinned worker routing and bounded assessment of explicitly selected workspace files.
 
 <a id="model-experience"></a>
 ## Model Experience

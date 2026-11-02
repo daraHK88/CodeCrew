@@ -122,9 +122,29 @@ member scope 上的一个 `team:policy` 段落说明共享的协作规则；固�
 
 ## 编码策略
 
-启用 `coding.decisions.enabled` 后，`coding_decide` 通过 OpenRouter Decisions API 提供可选决策建议，与聊天模型配置分离。它批量处理有限 Choice 问题，返回概率、置信度、模型、用量和延迟；低于 `minConfidence` 时返回不确定结果。超时和每轮调用上限限制开销，不自动重试失败或执行工作流动作。图像须显式请求，且已保留在调用者的持久会话中；不接受文件系统路径或远程图像 URL。请求使用配置的凭据引用，不返回密钥值。发送前检查文本和图像字节上限。建议不会完成任务、绕过权限或替代验证。决策用量显示在工具结果中，不计入聊天模型的 token 总量。
+启用 `coding.decisions.enabled` 后，`coding_decide` 提供有界的 OpenRouter 决策建议，与聊天模型分离。它批量处理 Choice、Noul（是非概率）和 Score（有序量表）问题。低于阈值的答案保持不确定；无效或自相矛盾的响应返回脱敏错误码。置信度不超过由概率分布计算的值；Choice/Score 缺少置信度时不作选择，Noul 使用 `abs(2p-1)`。置信度是分布统计量，不是正确性证明。超时、完整文本字节上限和共享的每轮请求预算限制开销。不自动重试或执行工作流动作。仍支持显式选择保留的图像；拒绝远程图像 URL。不返回凭据或提供方错误正文。工具建议单独报告模型、用量和耗时，不混入聊天模型统计。
 
-动态 `coding` 配置可要求 `spawn_teammate` 指定就绪的 `task_id`，且任务须包含非空 Markdown 节：Objective、Inputs、Scope、Acceptance、Verification 和 Stop conditions。任务描述加入 worker 提示词。`model_profile` 选择获准的 `workerProfiles` 路由，否则采用 `defaultWorkerProfile`；提供方、模型、推理强度和输出上限通过原生 subagent 选项传入。启用 `requireTaskBrief` 时，仅 Lead 能完成任务，并须提供非空验证证据。`select_model_profile` 经 LLM 配置验证后，在下一步为调用 agent 选择获准路由，不保存全局默认值；worker 输出限制不改变调用者的输出限制。这些工具不自动调度任务或验证证据。
+动态 `coding` 配置可要求 `spawn_teammate` 指定就绪的 `task_id`，且任务须包含非空 Markdown 节：Objective、Inputs、Scope、Acceptance、Verification 和 Stop conditions。任务描述加入 worker 提示词。`model_profile` 选择获准的 `workerProfiles` 路由，否则采用可选自动路由或 `defaultWorkerProfile`；提供方、模型、推理强度和输出上限通过原生 subagent 选项传入。启用 `requireTaskBrief` 时，仅 Lead 能完成任务，并须提供非空验证证据。`select_model_profile` 经 LLM 配置验证后，在下一步为调用 agent 选择获准路由，不保存全局默认值；worker 输出限制不改变调用者的输出限制。这些工具不自动调度任务或验证证据。
+
+<a id="automatic-routing-and-bounded-evidence"></a>
+### 自动路由与有界证据
+
+插件中的 `autoSelectSkills`、`autoRouteWorkers` 和 `inspectFiles` 默认为 `false`；CodeCrew profile 启用它们。Settings → Coding 提供各自的开关。本地技能规则和显式调用优先。对符合条件但未匹配规则的任务，Jev 从本地词法短名单中选择一个允许的技能或不选；技能加载器仍执行可见性与指令预算限制。机械查询和精确 UI 修改不增加选择请求。完整技能目录仍可用。
+
+未指定模型的较大 worker 任务可让 Jev 选择获准配置；保留显式 `model_profile`。不确定、缺少凭据、预算耗尽或服务失败时保留配置的默认值。任务就绪与简报验证在路由前执行。派生结果保留简短路由记录。路由不改变主管选择的聊天模型。自动技能选择、worker 路由和显式工具建议共享 `maxCallsPerTurn`；默认值为二。
+
+`coding_decide.files` 接受当前工作区内的显式文件短名单，并检查规范化路径包含关系。默认允许十一份文件，且完整文本预算不超过 12 KB；包装、问题、转义文本和大小未知的数据流均计入预算。拒绝凭据路径和可识别的密钥内容。读取通过 `ctx.fs` 执行，保留其权限，拒绝版本变化，且不发送 `fs/observed`，因此不能授权编辑。主模型只收到答案及源路径、版本、字节数；文件正文发送给配置的决策提供方。编辑或引用代码前使用普通 `read`，精确字符串查询使用 grep。这些过滤规则并非通用秘密检测器。
+
+| 模板 | 建议 |
+|---|---|
+| `rank_files` | 一次请求按目标对所选文件排序；不自主遍历 |
+| `review` | 七项风险问题；全部明确无风险才建议快速审查，否则完整审查 |
+| `coverage` | 所给测试是否覆盖所给需求，明确提供未知结果 |
+| `rules` | 拟议变更是否违背所给规则；仅提供建议，不作为编辑门禁 |
+| `browser` | 可见进展与阻碍；可批量添加针对已观察控件的自定义下一步选择 |
+| `compaction` | 工作边界、检查点完整性与进行中操作检查 |
+
+模板可在 `maxQuestions`（默认八）内附加自定义类型问题。审查出错时需要完整审查。浏览器建议不执行交互；压缩建议不删减历史、不覆盖原生自动压缩，也不替代工作区摘要。Jev 不授予权限、不验收任务，也不替代测试和主管验证。
 
 <a id="model-experience"></a>
 ## 模型体验

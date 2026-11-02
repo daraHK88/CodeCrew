@@ -4,6 +4,7 @@ import type { ConfigFormSnapshot } from '@deepseek-ai/dsh-client-ui-settings/cli
 import type { ModelProviderGroup } from '@deepseek-ai/dsh-api-remotes/client'
 import type { HostObservable, InjectFace } from '@deepseek-ai/dsh-client-ui-slots'
 import css from './CodingSection.module.css'
+import modelCss from './ModelsSection.module.css'
 
 /** Model route saved for one worker role. */
 export interface CodingRoute { provider: string; model: string; maxTokens?: number; reasoningEffort?: string }
@@ -14,7 +15,15 @@ export interface CodingValues {
     requireTaskBrief: boolean
     defaultWorkerProfile: string
     workerProfiles: Record<string, CodingRoute>
-    decisions?: { enabled: boolean; model: string; timeoutMs: number; minConfidence: number }
+    decisions?: {
+      enabled: boolean
+      model: string
+      timeoutMs: number
+      minConfidence: number
+      autoSelectSkills?: boolean
+      autoRouteWorkers?: boolean
+      inspectFiles?: boolean
+    }
   } }
   skills: { skills: { enabled: boolean } }
   memory: { memory: { enabled: boolean; maxBytes: number } }
@@ -27,6 +36,8 @@ export const codingEn = {
   workers: 'Worker models', workerHint: 'The supervisor selects a profile for each assignment. Reader is the default for delegated lookups.',
   decisions: 'Decision advisor', decisionEnabled: 'Use a decision model for ambiguous choices', decisionModel: 'Decision model ID',
   decisionHint: 'Uses the OpenRouter Decisions API for short choices and optional session images. Routine edits skip it. Advice does not replace tests or supervisor judgment.',
+  autoSelectSkills: 'Use Jev when local skill rules do not match', autoRouteWorkers: 'Choose worker models automatically when no profile is specified',
+  inspectFiles: 'Allow bounded assessment of explicitly selected workspace files',
   reader: 'Read and inspect', implementer: 'Implement', reviewer: 'Review', planner: 'Plan',
   brief: 'Require scoped assignments and supervisor approval', briefHint: 'Workers need a ready task with inputs, scope, acceptance checks, verification, and stop conditions.',
   skills: 'Load relevant skills automatically', skillsHint: 'Use local rules and a bounded instruction budget. Exact edits do not need a design workflow.',
@@ -71,7 +82,7 @@ export function CodingSection(props: InjectFace<CodingInjected>) {
     const listed = catalog.groups.some(group => group.models.some(model => selected === JSON.stringify([group.id, model.id])))
     return <label className={css.field} htmlFor={id}>
       <span>{label}</span>
-      <select id={id} aria-label={label} value={selected} disabled={!writable || status === 'saving'} onChange={(event) => { void save(() => props.selectModel(profile, event.target.value)) }}>
+      <select className={modelCss.selectInput} id={id} aria-label={label} value={selected} disabled={!writable || status === 'saving'} onChange={(event) => { void save(() => props.selectModel(profile, event.target.value)) }}>
         {!listed && <option value={selected}>{route?.model ?? t('unavailable')}</option>}
         {catalog.groups.map(group => <optgroup key={group.id} label={group.name}>
           {group.models.map(model => <option key={model.id} value={JSON.stringify([group.id, model.id])}>{model.name}</option>)}
@@ -117,6 +128,14 @@ export function CodingSection(props: InjectFace<CodingInjected>) {
             }
           }} />
       </label>
+      {(['autoSelectSkills', 'autoRouteWorkers', 'inspectFiles'] as const).map(key => (
+        <label className={css.toggle} key={key}>
+          <input type="checkbox" checked={team.value?.coding.decisions?.[key] ?? false}
+            disabled={!team.writable || status === 'saving' || !team.value?.coding.decisions?.enabled}
+            onChange={(event) => { void save(() => props.save('team', ['coding', 'decisions', key], event.target.checked)) }} />
+          <span>{t(key)}</span>
+        </label>
+      ))}
       <p className={css.hint}>{t('decisionHint')}</p>
     </section>
     <section className={css.card}>

@@ -62,6 +62,17 @@ function catalogSourceEntries(
   }))
 }
 
+declare module '@deepseek-ai/cordis' {
+  interface Events {
+    /**
+     * Optional fallback after local skill rules miss; the loader enforces visibility and instruction limits.
+     * @mode waterfall
+     * @param input - Admitted assignment and calling agent; no conversation history is supplied.
+     */
+    'skills/select-automatic'(input: { agent: Agent; task: string; signal: AbortSignal }, next: () => Promise<readonly string[]>): Promise<readonly string[]>
+  }
+}
+
 /** Bounded, local skill selection rules; first matching rule wins. */
 export interface AutomaticSkillSettings {
   /** Load permitted skill instructions when a local rule matches. */
@@ -115,7 +126,7 @@ export function apply(ctx: Context, config: Config = {}): void {
 
   const skillTool = defineTool({
     name: 'skill',
-    description: 'Load the full instructions for a skill. Call it before acting on a task that names or clearly matches a skill in the session skill catalog.',
+    description: 'Load full skill instructions before acting on a task that names or clearly matches a catalog skill. Automatically injected instructions are already loaded; do not reload them unless a refresh is needed.',
     parameters: {
       name: { type: 'string', required: true, description: 'The exact skill name from the available skills list.' },
     },
@@ -155,9 +166,11 @@ export function apply(ctx: Context, config: Config = {}): void {
             ],
           },
           content: { type: 'string', required: true },
+          alreadyLoaded: { type: 'boolean' },
         },
       },
-      render: (_args, value) => [{ type: 'text', text: renderSkillContent(value) }],
+      render: (_args, value) => [{ type: 'text', text: value.alreadyLoaded
+        ? `Skill "${value.name}" is already loaded automatically at its current contents. Use the retained instructions.` : renderSkillContent(value) }],
     },
     async execute(args, exec) {
       if (!isSkillName(args.name)) {
@@ -181,6 +194,9 @@ export function apply(ctx: Context, config: Config = {}): void {
       if (!isModelInvocable(skill)) {
         throw new Error(`skill "${args.name}" is not available for model invocation`)
       }
+      const alreadyLoaded = exec.agent?.session.deriveMessages().some(message => message.source.kind === 'skill-automatic'
+        && message.source.name === skill.name
+        && message.content.some(block => block.type === 'text' && block.text === renderSkillContent(skill))) ?? false
       return {
         name: skill.name,
         provider: skill.provider,
@@ -188,6 +204,7 @@ export function apply(ctx: Context, config: Config = {}): void {
           resourceBase: { ...skill.resourceBase },
         } : {},
         content: skill.content,
+        ...alreadyLoaded ? { alreadyLoaded: true } : {},
       }
     },
     presentCall(args) {
@@ -196,7 +213,7 @@ export function apply(ctx: Context, config: Config = {}): void {
   })
   ctx.tools.register(skillTool)
 
-  // Automatic selection has no network call and only runs for newly claimed assignments.
+  // Local rules run first; an optional scoped selector handles unmatched new assignments.
   ctx.on('agent/pre-step', async ({ agent, messages, signal }, next): Promise<PreStepDecision> => {
     const decision = await next()
     const automatic = ctx.get('codingSettings')?.skills() ?? config.automatic?.get()
@@ -205,12 +222,13 @@ export function apply(ctx: Context, config: Config = {}): void {
       .flatMap(message => message.content.flatMap(block => block.type === 'text' ? [block.text] : [])).join(' ').toLowerCase()
     if (!task || invokedSkillNames(messages).length > 0) return decision
     const rule = automatic.rules.find(rule => rule.keywords.some(word => word.trim() && task.includes(word.toLowerCase())))
-    if (rule === undefined) return decision
+    const selected = rule?.skills ?? await agent.ctx.waterfall('skills/select-automatic', { agent, task, signal }, () => Promise.resolve([]))
+    if (selected.length === 0) return decision
     signal.throwIfAborted()
     const lookup = { cwd: await ctx.workingDirectory.ensure(agent, signal), signal, scope: agent }
     const injections: UserMessage[] = []
     let bytes = 0
-    for (const name of [...new Set(rule.skills)].slice(0, automatic.maxSkills)) {
+    for (const name of [...new Set(selected)].slice(0, automatic.maxSkills)) {
       const skill = await ctx.skills.get(name, lookup)
       signal.throwIfAborted()
       if (skill === undefined || !isModelInvocable(skill)) continue

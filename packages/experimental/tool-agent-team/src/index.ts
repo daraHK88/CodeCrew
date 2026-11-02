@@ -7,6 +7,7 @@ import type { Agent } from '@deepseek-ai/dsh-agent'
 import { TeamTaskId } from '@deepseek-ai/dsh-experimental-agent-team'
 import type { TeamMemberView } from '@deepseek-ai/dsh-experimental-agent-team'
 import { defineTool } from '@deepseek-ai/dsh-tools'
+import { installDecisionSkillRouting, routeDecisionWorker } from './decision-routing.ts'
 import { decisionDefaults, decisionSchema, installDecisionTool, type DecisionSettings } from './decisions.ts'
 import type { InferValue, ValueSchemaSpec } from '@deepseek-ai/dsh-tools'
 
@@ -84,7 +85,7 @@ Prefer read/edit/write for file changes. If a file operation returns FS_STALE_VE
 Use the target returned by spawn_teammate or list_agents for send_message${interrupt ? ' and interrupt_agent' : ''}, or as owner when assigning or filtering shared tasks. send_message steers a running target at its nearest step boundary and starts or resumes an inactive target. inactive means no turn is executing; it does not describe task completion, success, failure, or waiting for other agents. provisioning means member creation is in progress; failed means member creation failed. A peer message starts with its sender name. A successful send does not mean the recipient has processed it. Shared-task workflow is list, get, claim with the current revision, perform the work, then complete. Task readiness never starts an owner. Before wait_agent, use list_agents and make sure another required member is running or provisioning; use send_message first when the required member is inactive. wait_agent observes only changes after that call starts, never wakes a member, and returns noProgress immediately when no other member can produce a change. Re-list after wakeup or timeout. The Lead must wait for required teammates before giving the final answer.`
 }
 
-const decisionPolicy = 'Use coding_decide only for a narrow ambiguous choice about approved model profiles, a short skill list, safe parallel work, failure recovery or retained screenshots. Batch related questions. Advice is not permission, verification, or a completion gate. On uncertainty, timeout or failure, continue with supervisor judgment rather than repeating the call.'
+const decisionPolicy = 'Use coding_decide for narrow semantic decisions about approved model profiles, relevant skills, file evidence, safe parallel work, failure recovery or retained screenshots. Batch related questions. Advice is not permission, verification, or a completion gate. Use recipe review for review-depth triage, coverage for supplied requirements/tests, rules for a proposed change, browser for current-page evidence, compaction for checkpoint readiness, and rank_files for an explicit file shortlist. Use typed custom questions for next browser actions and rubric scores. Review triage errors require the full review. Advice never performs clicks, edits or compaction. On uncertainty, timeout or failure, continue with supervisor judgment rather than repeating the call.'
 
 const ACTIVE_WAIT_STATUSES: ReadonlySet<TeamMemberView['status']> = new Set(['running', 'provisioning'])
 const NO_ACTIVE_PEER_MESSAGE = 'No other Team member is running or provisioning. wait_agent cannot make progress or wake inactive teammates. Re-list with list_agents and team_task_list, then use send_message to wake each required inactive teammate before waiting again.'
@@ -138,6 +139,7 @@ const SPAWN_VALUE_SCHEMA = {
   additionalProperties: false,
   properties: {
     member: { ...MEMBER_VIEW_SCHEMA, required: true },
+    routing: { type: 'string' },
   },
 } as const
 
@@ -215,13 +217,16 @@ function install(agent: Agent, ctx: Context, config: Required<Omit<Config, 'codi
   const disposers: Array<() => unknown> = []
   const register = (disposer: () => unknown): void => { disposers.push(disposer) }
   try {
-    register(installDecisionTool(scoped, agent, () => config.coding().decisions ?? decisionDefaults))
+    const advisor = installDecisionTool(scoped, agent, () => config.coding().decisions ?? decisionDefaults)
+    register(advisor)
+    register(installDecisionSkillRouting(scoped, agent, advisor, () => config.coding().decisions ?? decisionDefaults))
     register(scoped.systemPrompt.section({
       name: 'team:policy',
       order: scoped.systemPrompt.getSectionOrder('TEAM_POLICY'),
       text: () => {
         const coding = config.coding()
-        const advice = coding.decisions?.enabled ? decisionPolicy : ''
+        const advice = coding.decisions?.enabled ? `${decisionPolicy}\n${coding.decisions.autoRouteWorkers
+          ? 'Automatic worker routing is enabled. Omit model_profile to let Jev choose among approved profiles; specify it to pin a route. Mechanical lookups use the configured default without a decision call.' : ''}` : ''
         return `${teamPolicy(config.interrupt)}\n${advice}\nApproved worker profiles: ${JSON.stringify(coding.workerProfiles)}`
       },
     }))
@@ -273,7 +278,7 @@ To message another teammate, use send_message({ target: "<teammate name>", messa
         name: { type: 'string', required: true, description: 'Unique lower-kebab-case teammate name.' },
         description: { type: 'string', required: true, description: 'Short description of the delegated responsibility.' },
         prompt: { type: 'string', required: true, description: 'Complete initial task for the teammate.' },
-        model_profile: { type: 'string', description: 'Approved worker profile from global coding-team settings; omission uses its default.' },
+        model_profile: { type: 'string', description: 'Approved worker profile from global coding-team settings; omission uses optional automatic routing or the configured default.' },
         task_id: { type: 'string', description: 'Ready shared task whose description is the complete assignment brief.' },
         context: {
           type: 'string',
@@ -286,10 +291,7 @@ To message another teammate, use send_message({ target: "<teammate name>", messa
         const agent = callingAgent(exec.agent, 'spawn_teammate')
         const context = args.context ?? 'fresh'
         const settings = config.coding()
-        const profileName = args.model_profile ?? settings.defaultWorkerProfile
-        const profile = profileName === '' ? undefined : settings.workerProfiles[profileName]
-        if (profileName !== '' && profile === undefined) throw new Error(`Unknown worker model profile: ${profileName}`)
-        if (profile !== undefined && (!profile.provider.trim() || !profile.model.trim())) throw new Error('Worker profile requires a provider and model')
+        if (args.model_profile !== undefined && args.model_profile !== '' && settings.workerProfiles[args.model_profile] === undefined) throw new Error(`Unknown worker model profile: ${args.model_profile}`)
         if (settings.requireTaskBrief && args.task_id === undefined) throw new Error('Create a ready shared task with a complete assignment brief before delegating')
         const task = args.task_id === undefined ? undefined : ctx.agentTeams.getTask(agent, TeamTaskId(args.task_id))
         if (task !== undefined && !task.ready) throw new Error(`Task ${task.id} is not ready; resolve its dependencies before delegating`)
@@ -306,6 +308,11 @@ To message another teammate, use send_message({ target: "<teammate name>", messa
           ? `Claim ${task.id} with expected_revision ${task.revision} before working. If the revision changed, read the task again. Report results and verification to the Lead; leave completion to the supervisor.\n`
           : ''
         const prompt = task === undefined ? args.prompt : `Shared task: ${task.id}\n${ownership}${task.description}\n\n${args.prompt}`
+        const routed = args.model_profile === undefined
+          ? await routeDecisionWorker(advisor, settings, prompt, exec.signal) : { profileName: args.model_profile }
+        const profile = routed.profileName === '' ? undefined : config.coding().workerProfiles[routed.profileName]
+        if (routed.profileName !== '' && profile === undefined) throw new Error(`Unknown worker model profile: ${routed.profileName}`)
+        if (profile !== undefined && (!profile.provider.trim() || !profile.model.trim())) throw new Error('Worker profile requires a provider and model')
         const result = await ctx.agentTeams.spawnTeammate(agent, {
           name: args.name,
           description: args.description,
@@ -319,7 +326,7 @@ To message another teammate, use send_message({ target: "<teammate name>", messa
           provider: context === 'fork' ? config.forkProvider : config.freshProvider,
           signal: exec.signal,
         })
-        return { member: modelMember(result.member) }
+        return { member: modelMember(result.member), ...routed.receipt === undefined ? {} : { routing: routed.receipt } }
       },
     })))
 

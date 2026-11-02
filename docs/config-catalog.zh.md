@@ -1454,7 +1454,7 @@ export interface Config {
 
 - `inject`: `agents` · `agentTeams` · `tools` · `systemPrompt`
 - `refs`: `Volatile` (`@deepseek-ai/cordis`)
-- `source`: [`packages/experimental/tool-agent-team/src/index.ts:47`](../packages/experimental/tool-agent-team/src/index.ts)
+- `source`: [`packages/experimental/tool-agent-team/src/index.ts:48`](../packages/experimental/tool-agent-team/src/index.ts)
 
 ```ts config-catalog
 /** Tool routing configuration. */
@@ -1485,6 +1485,12 @@ export interface CodingTeamSettings {
 export interface DecisionSettings {
   /** Register the optional decision advisor tool. */
   enabled: boolean
+  /** Let Jev select one permitted skill when local rules do not match a substantial task. */
+  autoSelectSkills?: boolean
+  /** Select an approved worker profile when the supervisor omits model_profile. */
+  autoRouteWorkers?: boolean
+  /** Allow explicitly selected workspace files to be assessed without returning their contents. */
+  inspectFiles?: boolean
   /** OpenRouter Decisions model identifier. */
   model: string
   /** Credential reference or environment name holding the OpenRouter API key. */
@@ -4341,7 +4347,7 @@ export interface Config {
 
 - `inject`: `agents` · `tools` · `skills` · `workingDirectory`
 - `refs`: `Volatile` (`@deepseek-ai/cordis`)
-- `source`: [`packages/skill/tool-skill/src/index.ts:83`](../packages/skill/tool-skill/src/index.ts)
+- `source`: [`packages/skill/tool-skill/src/index.ts:94`](../packages/skill/tool-skill/src/index.ts)
 
 ```ts config-catalog
 /** Model-facing skill catalog configuration. */

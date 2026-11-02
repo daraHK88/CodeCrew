@@ -349,4 +349,23 @@ A skill provider, runtime contribution, or provider-backed catalog may have chan
 ```
 
 Source: [`packages/skill/skill/src/index.ts`](../../packages/skill/skill/src/index.ts)
+
+<a id="skillsselect-automatic--waterfall"></a>
+
+#### `skills/select-automatic` — waterfall
+
+Optional fallback after local skill rules miss; the loader enforces visibility and instruction limits.
+
+```ts cordis-catalog
+/**
+ * Optional fallback after local skill rules miss; the loader enforces visibility and instruction limits.
+ * @mode waterfall
+ * @param input - Admitted assignment and calling agent; no conversation history is supplied.
+ */
+'skills/select-automatic'(input: { agent: Agent; task: string; signal: AbortSignal }, next: () => Promise<readonly string[]>): Promise<readonly string[]>
+```
+
+Types: [Agent](core.md)
+
+Source: [`packages/skill/tool-skill/src/index.ts`](../../packages/skill/tool-skill/src/index.ts)
 <!-- END GENERATED cordis-surface -->

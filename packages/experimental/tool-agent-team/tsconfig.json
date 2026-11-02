@@ -43,6 +43,18 @@
     },
     {
       "path": "../../credentials/credentials"
+    },
+    {
+      "path": "../../fs/fs"
+    },
+    {
+      "path": "../../session/working-directory"
+    },
+    {
+      "path": "../../skill/skill"
+    },
+    {
+      "path": "../../skill/tool-skill"
     }
   ]
 }

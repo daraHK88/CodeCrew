@@ -37,7 +37,9 @@ Settings → Coding 控制全局默认模型、reader、implementer、planner、
 
 通用记忆默认读取 `$DSH_HOME/memory/USER.md`；工作区记忆只读取当前工作目录的 `.dsh/BRIEF.md`。Agent 指令要求在摘要中维护目标、约束、决策、进度、验证和下一步。保留的快照去重，文件变化后刷新；快照被压缩移除时，在下一获准步骤前恢复。缺失文件可忽略，超大文件整体省略。未添加后台记忆写入器，压缩也不是无损的。
 
-Settings → Coding 还提供独立 Decision advisor 模型，初始为 OpenRouter Decisions API 上的 `typesafe/jev-1.14`。主管可通过 `coding_decide` 批量处理有歧义的模型或技能选择、并行工作安排、失败分类或保留图像问题。精确修改跳过此步骤。建议本身不能更改模型、权限或任务验收。默认每轮最多两次请求，每次四个问题，超时 2.5 秒，文本上限 12 KB、图像字节上限 2 MiB；置信度低于 0.7 时返回不确定结果。上限和密钥引用可在 profile 配置中修改。失败和日志行为见[团队工具参考](../packages/experimental/tool-agent-team/README.zh.md#coding-policy)。
+Settings → Coding 还提供独立 Decision advisor 模型，初始为 OpenRouter Decisions API 上的 `typesafe/jev-1.14`。主管可通过 `coding_decide` 批量处理有歧义的模型或技能选择、并行工作安排、失败分类或保留图像问题。精确修改跳过此步骤。建议本身不能更改模型、权限或任务验收。默认每轮最多两次请求，每次八个问题，超时 2.5 秒，文本上限 12 KB、图像字节上限 2 MiB；置信度低于 0.7 时返回不确定结果。上限和密钥引用可在 profile 配置中修改。失败和日志行为见[团队工具参考](../packages/experimental/tool-agent-team/README.zh.md#coding-policy)。
+
+Jev 还提供可选的自动技能后备选择、未指定模型的 worker 路由和有界文件判断。三个全局开关位于 Settings → Coding，此 profile 默认启用。内置模板支持文件排序、审查深度、需求与测试检查、项目规则、浏览器进展和检查点就绪判断。本地快速路径优先，所有决策共享每轮预算。来源、验证和限制见 [Jev 集成调研](jev-research.md)。
 
 编码 profile 为新创建的工具全局启用锚点编辑。agent 可用 `edit_lines` 处理重复代码和较大替换，小型唯一修改仍可使用字面量编辑。证据和权衡见[编辑工具约定](../packages/fs/tool-fs/README.zh.md#anchored-editing)和 [Oh My Pi 调研](oh-my-pi-research.md)。
 

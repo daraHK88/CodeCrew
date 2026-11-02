@@ -10,6 +10,9 @@
     forkProvider: fork
     coding:
       decisions:
+        autoSelectSkills: true
+        autoRouteWorkers: true
+        inspectFiles: true
         enabled: true
         model: typesafe/jev-1.14
         apiKeyEnv: OPENROUTER_API_KEY
@@ -18,7 +21,7 @@
         maxTextBytes: 12000
         maxImageBytes: 2097152
         maxCallsPerTurn: 2
-        maxQuestions: 4
+        maxQuestions: 8
         maxOptions: 12
       requireTaskBrief: true
       defaultWorkerProfile: reader

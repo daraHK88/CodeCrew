@@ -1,6 +1,7 @@
 import { executeToolFixture } from '@deepseek-ai/dsh-tool-testkit'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { LocalFileSystem } from '@deepseek-ai/dsh-fs-local'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
@@ -27,6 +28,8 @@ import TeamService from '../../agent-team/src/index.ts'
 import * as toolTeam from '../src/index.ts'
 import { MemoryCredentials } from '../../../credentials/credentials/tests/memory.ts'
 import { decisionDefaults } from '../src/decisions.ts'
+import SkillRegistry from '@deepseek-ai/dsh-skill'
+import * as ToolSkill from '@deepseek-ai/dsh-tool-skill'
 
 function serializeRequest(request: GenerateOptions) {
   const connection = resolveAdapterOptions({ models: [{ id: request.model, systemPromptUpdate: 'in-history' }] })
@@ -884,5 +887,173 @@ it('keeps decision calls optional and enforces the per-turn request budget', asy
     expect(adapter.requests[0]?.tools?.some(tool => tool.name === 'coding_decide')).toBe(true)
     expect(JSON.stringify(lead.session.snapshotEvents())).toContain('Decision request budget reached')
     expect(lead.model.current()).toMatchObject({ provider: 'mock', model: 'mock' })
+  } finally { vi.unstubAllGlobals() }
+})
+
+it('routes an unpinned substantial worker among approved profiles and preserves explicit choices', async () => {
+  const { ctx, lead, fiber } = await setup(['hang', 'hang'])
+  await ctx.plugin(MemoryCredentials, { OPENROUTER_API_KEY: 'fixture-key' })
+  await fiber.dispose()
+  await ctx.plugin(toolTeam, { coding: { requireTaskBrief: false, defaultWorkerProfile: 'reader',
+    workerProfiles: { reader: { provider: 'mock', model: 'reader' }, planner: { provider: 'mock', model: 'planner' } },
+    decisions: { ...decisionDefaults, enabled: true, autoRouteWorkers: true },
+  } } as never)
+  const fetcher = vi.fn<typeof fetch>().mockResolvedValue(Response.json({ model: 'jev-fixture', answers: {
+    profile: { type: 'choice', choice: 'profile_1', confidence: 1, probabilities: { profile_0: 0, profile_1: 1 } },
+  } }))
+  vi.stubGlobal('fetch', fetcher)
+  try {
+    const result = await execute(ctx, lead, 'spawn_teammate', { name: 'architect', description: 'Analyze migration design',
+      prompt: 'Design a safe schema migration with concurrent readers and failure recovery. Provide the tradeoffs and acceptance checks.' })
+    expect(result.isError, text(result)).toBe(false)
+    const childId = spawnedChildId(ctx, lead, result)
+    await vi.waitFor(() => { expect(ctx.agents.get(childId)?.options).toMatchObject({ model: 'planner' }) })
+    expect(text(result)).toContain('jev-fixture')
+    const explicit = await execute(ctx, lead, 'spawn_teammate', { name: 'pinned', description: 'Pinned reader',
+      prompt: 'Investigate schema migration requirements.', model_profile: 'reader' })
+    expect(explicit.isError, text(explicit)).toBe(false)
+    expect(fetcher).toHaveBeenCalledTimes(1)
+  } finally { vi.unstubAllGlobals() }
+})
+
+it('uses no routing request for a mechanical assignment and falls back after a service failure', async () => {
+  const { ctx, lead, fiber } = await setup(['hang', 'hang'])
+  await ctx.plugin(MemoryCredentials, { OPENROUTER_API_KEY: 'fixture-key' })
+  await fiber.dispose()
+  await ctx.plugin(toolTeam, { coding: { requireTaskBrief: false, defaultWorkerProfile: 'reader',
+    workerProfiles: { reader: { provider: 'mock', model: 'reader' }, planner: { provider: 'mock', model: 'planner' } },
+    decisions: { ...decisionDefaults, enabled: true, autoRouteWorkers: true },
+  } } as never)
+  const fetcher = vi.fn<typeof fetch>().mockRejectedValue(new Error('synthetic transport failure'))
+  vi.stubGlobal('fetch', fetcher)
+  try {
+    expect((await execute(ctx, lead, 'spawn_teammate', { name: 'lookup', description: 'Lookup', prompt: 'Read one file and report its exported symbols.' })).isError).toBe(false)
+    expect(fetcher).not.toHaveBeenCalled()
+    const fallback = await execute(ctx, lead, 'spawn_teammate', { name: 'fallback', description: 'Design', prompt: 'Design a schema migration that preserves concurrent access and recovers from interrupted writes.' })
+    expect(fallback.isError, text(fallback)).toBe(false)
+    expect(text(fallback)).toContain('DECISION_TRANSPORT')
+    expect(ctx.agents.get(spawnedChildId(ctx, lead, fallback))?.options.model).toBe('reader')
+    expect(fetcher).toHaveBeenCalledTimes(1)
+  } finally { vi.unstubAllGlobals() }
+})
+
+it('keeps review triage conservative and never treats Jev as acceptance', async () => {
+  const args = { context: 'Synthetic copy-only diff with unchanged behavior and verified text.', recipe: 'review' }
+  const { ctx, lead, fiber } = await setup([
+    toolCallResponse('review-quick', 'coding_decide', args),
+    toolCallResponse('review-full', 'coding_decide', args),
+    textResponse('The supervisor still verifies the change.'),
+  ])
+  await ctx.plugin(MemoryCredentials, { OPENROUTER_API_KEY: 'fixture-key' })
+  await fiber.dispose()
+  await ctx.plugin(toolTeam, { coding: { requireTaskBrief: false, defaultWorkerProfile: '', workerProfiles: {},
+    decisions: { ...decisionDefaults, enabled: true },
+  } } as never)
+  let calls = 0
+  const fetcher = vi.fn<typeof fetch>().mockImplementation((_url, init) => {
+    if (typeof init?.body !== 'string') throw new Error('Expected JSON request')
+    const body = JSON.parse(init.body) as { questions: Record<string, unknown> }
+    calls++
+    return Promise.resolve(Response.json({ model: 'jev-fixture', answers: Object.fromEntries(Object.keys(body.questions).map((id, index) => [id,
+      { type: 'noul', noul: calls === 2 && index === 0 ? 0.5 : 0 },
+    ])) }))
+  })
+  vi.stubGlobal('fetch', fetcher)
+  try {
+    await runTurn(lead, 'Exercise both synthetic review decisions, without accepting any task.')
+    const retained = JSON.stringify(lead.session.snapshotEvents().filter(event => event.type === 'tool/result'))
+    expect(retained).toContain('reviewDepth')
+    expect(retained).toContain('quick')
+    expect(retained).toContain('full')
+    expect(fetcher).toHaveBeenCalledTimes(2)
+    expect(ctx.agentTeams.listTasks(lead)).toEqual([])
+  } finally { vi.unstubAllGlobals() }
+})
+
+it('loads Jev-selected permitted skills automatically and shares the turn budget with explicit advice', async () => {
+  const args = { context: 'Which role should handle the next investigation?', questions: [{
+    id: 'route', question: 'Choose a role', options: [{ id: 'reader', description: 'Read' }, { id: 'planner', description: 'Plan' }],
+  }] }
+  const { ctx, lead, fiber, adapter } = await setup([
+    toolCallResponse('explicit-advice-after-skill', 'coding_decide', args), textResponse('Investigated with the loaded debugging skill.'),
+  ])
+  await ctx.plugin(MemoryCredentials, { OPENROUTER_API_KEY: 'fixture-key' })
+  await ctx.plugin(SkillRegistry)
+  ctx.skills.register({ name: 'debugging', description: 'Diagnose intermittent cancellation failures', source: 'runtime', content: 'SYNTHETIC_DEBUGGING_INSTRUCTIONS' })
+  ctx.skills.register({ name: 'manual-debugging', description: 'Diagnose intermittent cancellation failures', source: 'runtime', content: 'MANUAL_ONLY',
+    invocation: { modelInvocable: false, userInvocable: true } })
+  await ctx.plugin(ToolSkill, { automatic: { enabled: true, maxSkills: 1, maxBytes: 4096, rules: [] } } as never)
+  await fiber.dispose()
+  await ctx.plugin(toolTeam, { coding: { requireTaskBrief: false, defaultWorkerProfile: '', workerProfiles: {},
+    decisions: { ...decisionDefaults, enabled: true, autoSelectSkills: true, maxCallsPerTurn: 1 },
+  } } as never)
+  const fetcher = vi.fn<typeof fetch>().mockImplementation((_url, init) => {
+    expect(init?.body).not.toContain('manual-debugging')
+    return Promise.resolve(Response.json({ model: 'jev-fixture', answers: {
+      skill: { type: 'choice', choice: 'skill_0', confidence: 1, probabilities: { none: 0, skill_0: 1 } },
+    } }))
+  })
+  vi.stubGlobal('fetch', fetcher)
+  try {
+    await runTurn(lead, 'Diagnose intermittent cancellation failures in the background task runner.')
+    expect(JSON.stringify(adapter.requests[0]?.messages)).toContain('SYNTHETIC_DEBUGGING_INSTRUCTIONS')
+    expect(JSON.stringify(lead.session.snapshotEvents())).toContain('Decision request budget reached')
+    expect(fetcher).toHaveBeenCalledTimes(1)
+  } finally { vi.unstubAllGlobals() }
+})
+
+it('ranks real files in one request without adding their contents to the coding model context', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'codecrew-jev-context-')); roots.push(dir)
+  writeFileSync(join(dir, 'auth.ts'), 'export const SYNTHETIC_PRIVATE_SOURCE_SENTINEL = "checks roles";\n')
+  writeFileSync(join(dir, 'view.ts'), 'export const render = () => "page";\n')
+  const args = { context: 'Find the owner of access checks.', recipe: 'rank_files', files: ['auth.ts', 'view.ts'] }
+  const { ctx, lead, fiber, adapter } = await setup([
+    toolCallResponse('rank-files', 'coding_decide', args), textResponse('Read auth.ts first; source remains outside the coding model context.'),
+  ])
+  await ctx.plugin(LocalFileSystem, { cwd: dir })
+  await ctx.workingDirectory.set(lead, dir)
+  await ctx.plugin(MemoryCredentials, { OPENROUTER_API_KEY: 'fixture-key' })
+  await fiber.dispose()
+  await ctx.plugin(toolTeam, { coding: { requireTaskBrief: false, defaultWorkerProfile: '', workerProfiles: {},
+    decisions: { ...decisionDefaults, enabled: true, inspectFiles: true },
+  } } as never)
+  const fetcher = vi.fn<typeof fetch>().mockImplementation((_url, init) => {
+    expect(init?.body).toContain('SYNTHETIC_PRIVATE_SOURCE_SENTINEL')
+    return Promise.resolve(Response.json({ model: 'jev-fixture', answers: {
+      relevance: { type: 'choice', choice: 'file_0', confidence: 1, probabilities: { none: 0, file_0: 1, file_1: 0 } },
+    } }))
+  })
+  vi.stubGlobal('fetch', fetcher)
+  try {
+    await runTurn(lead, 'Rank the supplied synthetic files; do not read them into your own context.')
+    expect(fetcher).toHaveBeenCalledTimes(1)
+    expect(JSON.stringify(adapter.requests)).not.toContain('SYNTHETIC_PRIVATE_SOURCE_SENTINEL')
+    const retained = JSON.stringify(lead.session.snapshotEvents().filter(event => event.type === 'tool/result'))
+    expect(retained).toContain('ranking')
+    expect(retained).toContain('auth.ts')
+    expect(retained).not.toContain('SYNTHETIC_PRIVATE_SOURCE_SENTINEL')
+  } finally { vi.unstubAllGlobals() }
+})
+
+it('isolates automatic skill requests and budgets between multiple live agents', async () => {
+  const { ctx, lead, fiber } = await setup([textResponse('Continue without a confidently selected skill.'), textResponse('Independent turn.')])
+  await ctx.plugin(MemoryCredentials, { OPENROUTER_API_KEY: 'fixture-key' })
+  await ctx.plugin(SkillRegistry)
+  ctx.skills.register({ name: 'debugging', description: 'Analyze intermittent cancellation failures', source: 'runtime', content: 'Debug carefully.' })
+  await ctx.plugin(ToolSkill, { automatic: { enabled: true, maxSkills: 1, maxBytes: 4096, rules: [] } } as never)
+  await fiber.dispose()
+  await ctx.plugin(toolTeam, { coding: { requireTaskBrief: false, defaultWorkerProfile: '', workerProfiles: {},
+    decisions: { ...decisionDefaults, enabled: true, autoSelectSkills: true, maxCallsPerTurn: 1 },
+  } } as never)
+  const other = await ctx.agentLoop.create(SessionId('other-decision-owner'), { provider: 'mock', model: 'mock' })
+  const fetcher = vi.fn<typeof fetch>().mockResolvedValue(Response.json({ model: 'jev-fixture', answers: {
+    skill: { type: 'choice', choice: 'none', confidence: 0, probabilities: { none: 0.5, skill_0: 0.5 } },
+  } }))
+  vi.stubGlobal('fetch', fetcher)
+  try {
+    await runTurn(lead, 'Analyze intermittent cancellation failures in the background task runner.')
+    expect(fetcher).toHaveBeenCalledTimes(1)
+    await runTurn(other, 'Analyze intermittent cancellation failures in a different component.')
+    expect(fetcher).toHaveBeenCalledTimes(2)
   } finally { vi.unstubAllGlobals() }
 })

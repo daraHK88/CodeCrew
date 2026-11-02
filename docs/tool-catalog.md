@@ -1790,7 +1790,7 @@ A fixed foreground workflow starts one fresh structured child per round; the mod
 
 ### `skill`
 
-Load the full instructions for a skill. Call it before acting on a task that names or clearly matches a skill in the session skill catalog.
+Load full skill instructions before acting on a task that names or clearly matches a catalog skill. Automatically injected instructions are already loaded; do not reload them unless a refresh is needed.
 
 ```json
 {
@@ -2301,7 +2301,7 @@ The kind-agnostic background-job controller: background bash commands and PTY se
 
 ### `coding_decide`
 
-Get bounded decision advice for ambiguous model/skill selection, parallel work, failure triage, or a screenshot. Batch related questions. Skip routine edits and passing-check approval. Advice cannot replace supervisor verification.
+Ask typed choice, yes/no, or rubric questions. Optional recipes assess review risk, test coverage, rules, browser progress or compaction readiness. Explicit workspace files can be assessed without returning their contents. Batch questions; use grep for exact lookups. Advice is not permission or verification.
 
 ```json
 {
@@ -2310,6 +2310,26 @@ Get bounded decision advice for ambiguous model/skill selection, parallel work, 
     "context": {
       "type": "string",
       "description": "Short task, constraints and relevant evidence. No transcript or secrets."
+    },
+    "recipe": {
+      "type": "string",
+      "description": "Use a fixed question set; custom requires questions.",
+      "enum": [
+        "custom",
+        "review",
+        "coverage",
+        "rules",
+        "browser",
+        "compaction",
+        "rank_files"
+      ]
+    },
+    "files": {
+      "type": "array",
+      "description": "Explicit workspace files to send to the decision model instead of loading their text here; no globs, secret files, or paths outside the workspace.",
+      "items": {
+        "type": "string"
+      }
     },
     "questions": {
       "type": "array",
@@ -2322,6 +2342,22 @@ Get bounded decision advice for ambiguous model/skill selection, parallel work, 
           },
           "question": {
             "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "description": "Defaults to choice. Noul returns probability of yes; score rates ordered levels.",
+            "enum": [
+              "choice",
+              "noul",
+              "score"
+            ]
+          },
+          "levels": {
+            "type": "array",
+            "description": "Two to ten ordered rubric levels for score only.",
+            "items": {
+              "type": "string"
+            }
           },
           "options": {
             "type": "array",
@@ -2345,8 +2381,7 @@ Get bounded decision advice for ambiguous model/skill selection, parallel work, 
         },
         "required": [
           "id",
-          "question",
-          "options"
+          "question"
         ]
       }
     },
@@ -2356,8 +2391,7 @@ Get bounded decision advice for ambiguous model/skill selection, parallel work, 
     }
   },
   "required": [
-    "context",
-    "questions"
+    "context"
   ]
 }
 ```
@@ -2472,7 +2506,7 @@ Create one named, durable teammate. Only the Team Lead may call this tool.
     },
     "model_profile": {
       "type": "string",
-      "description": "Approved worker profile from global coding-team settings; omission uses its default."
+      "description": "Approved worker profile from global coding-team settings; omission uses optional automatic routing or the configured default."
     },
     "task_id": {
       "type": "string",

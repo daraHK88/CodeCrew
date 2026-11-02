@@ -48,8 +48,11 @@
   en: 2a9193d64ed0aec0
   zh: 2886cb83f95b496c
 /deepseek-ai-dsh-experimental-tool-agent-team/coding-policy:
-  en: 83c05f72f4ac5097
-  zh: 3a2c0b7106a3ddcb
+  en: ba468256762be65c
+  zh: 25c932f20bc66972
+/deepseek-ai-dsh-experimental-tool-agent-team/coding-policy/automatic-routing-and-bounded-evidence:
+  en: 7fd43747154c4cfc
+  zh: c8d7fd8598cd1d35
 /deepseek-ai-dsh-experimental-tool-agent-team/model-experience:
   en: 215e7ba838619b7b
   zh: a311da3843709f90

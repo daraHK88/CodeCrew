@@ -1,7 +1,7 @@
 import { executeToolFixture } from '@deepseek-ai/dsh-tool-testkit'
 import * as NativeToolExecutor from '@deepseek-ai/dsh-tool-executor-native'
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { unsupportedModel, provideWorkingDirectoryFixture, unsupportedInbox } from '@deepseek-ai/dsh-agent-loop-testkit'
 import { mkdir, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -65,7 +65,7 @@ async function setup(home: string, config: object = {}): Promise<Context> {
   await ctx.plugin(AgentRegistry)
   await ctx.plugin(SkillRegistry)
   await ctx.plugin(SkillFileSystem, { dshHome: join(home, '.dsh'), agentsHome: join(home, '.agents'), watch: false })
-  await ctx.plugin(toolSkill, config as never)
+  await ctx.plugin(toolSkill, config)
   return ctx
 }
 
@@ -915,7 +915,7 @@ describe('dsh-tool-skill', () => {
       callId: ToolCallId('c1'),
       name: 'skill',
       arguments: { name: 'project-skill' },
-      agent: { session: { header: { cwd: project } } } as never,
+      agent: agentForCwd(project),
     })
 
     expect(result.isError).toBe(false)
@@ -1267,4 +1267,46 @@ describe('automatic coding skills', () => {
     if (decision.kind !== 'enter') throw new Error('expected enter')
     expect(decision.messages.some(message => message.source.kind === 'skill-automatic')).toBe(false)
   })
+})
+
+it('validates an optional automatic selector and lets local rules take precedence', async () => {
+  const home = await tempDir('automatic-advisor')
+  await writeSkill(join(home, '.agents', 'skills'), 'debugging', 'Investigate failures', 'Inspect the failing evidence first.')
+  const ctx = await setup(home, { automatic: { enabled: true, maxSkills: 1, maxBytes: 4096,
+    rules: [{ keywords: ['local rule'], skills: ['debugging'] }] } })
+  const owner = agentForCwd(home)
+  const picker = vi.fn(() => Promise.resolve(['debugging', 'not-installed']))
+  const stop = owner.ctx.on('skills/select-automatic', picker)
+  try {
+    const request = (text: string) => proposeStep(ctx, owner, [createUserMessage({ content: [{ type: 'text', text }], source: { kind: 'user' } })])
+    const matched = await request('Use the local rule for this task')
+    expect(picker).not.toHaveBeenCalled()
+    expect(JSON.stringify(matched)).toContain('Inspect the failing evidence first.')
+    const suggested = await request('Diagnose an intermittent failure in the login flow')
+    expect(picker).toHaveBeenCalledTimes(1)
+    if (suggested.kind !== 'enter') throw new Error('Expected admitted step')
+    expect(suggested.messages.filter(message => message.source.kind === 'skill-automatic')).toHaveLength(1)
+    stop()
+    const removed = await request('Diagnose an intermittent failure in the login flow')
+    if (removed.kind !== 'enter') throw new Error('Expected admitted step')
+    expect(removed.messages.some(message => message.source.kind === 'skill-automatic')).toBe(false)
+  } finally { stop() }
+})
+
+it('avoids duplicating unchanged automatic instructions and reloads edited skill bodies', async () => {
+  const home = await tempDir('automatic-dedup')
+  await writeSkill(join(home, '.agents', 'skills'), 'debugging', 'Debug issues', 'ORIGINAL_AUTOMATIC_BODY')
+  const ctx = await setup(home, { automatic: { enabled: true, maxSkills: 1, maxBytes: 4096,
+    rules: [{ keywords: ['diagnose'], skills: ['debugging'] }] } })
+  const owner = agentForCwd(home)
+  const decision = await proposeStep(ctx, owner, [createUserMessage({ content: [{ type: 'text', text: 'Diagnose an intermittent failure' }], source: { kind: 'user' } })])
+  if (decision.kind !== 'enter') throw new Error('Expected admitted step')
+  for (const message of decision.messages) owner.session.append('user/message', message, { surfaceOp: 'append' })
+  const load = () => executeToolFixture(ctx, { name: 'skill', arguments: { name: 'debugging' }, callId: ToolCallId('dedup'), signal: testToolSignal, agent: owner })
+  const compact = await load()
+  expect(JSON.stringify(compact.content)).toContain('already loaded automatically')
+  expect(JSON.stringify(compact.content)).not.toContain('ORIGINAL_AUTOMATIC_BODY')
+  await writeSkill(join(home, '.agents', 'skills'), 'debugging', 'Debug issues', 'UPDATED_SKILL_BODY')
+  const fresh = await load()
+  expect(JSON.stringify(fresh.content)).toContain('UPDATED_SKILL_BODY')
 })

@@ -104,3 +104,49 @@ it('classifies transport failure without including raw exception detail', async 
   if (!(failure instanceof DecisionError)) throw new Error('Expected a typed decision failure')
   expect(failure.message).not.toContain('sensitive')
 })
+
+it('batches native yes/no and score primitives with conservative confidence', async () => {
+  const fetcher = vi.fn<typeof fetch>().mockResolvedValue(Response.json({ model: settings.model, answers: {
+    violation: { type: 'noul', noul: 0.8 },
+    risk: { type: 'score', score: 1.6, confidence: 0.9, probabilities: { 0: 0.1, 1: 0.2, 2: 0.7 } },
+  } }))
+  vi.stubGlobal('fetch', fetcher)
+  const result = await submitDecision({ ...settings, minConfidence: 0.3 }, { context: 'Synthetic changed code and review evidence.', questions: [
+    { id: 'violation', type: 'noul', question: 'Does the change violate the supplied rule?' },
+    { id: 'risk', type: 'score', question: 'How risky is the change?', levels: ['Cosmetic', 'Behavioral', 'Security sensitive'] },
+  ] }, 'fixture-key', [], signal)
+  expect(result.decisions[0]).toMatchObject({ type: 'noul', noul: 0.8, status: 'decided', choice: null })
+  expect(result.decisions[0]?.confidence).toBeCloseTo(0.6)
+  expect(result.decisions[1]).toMatchObject({ type: 'score', score: 1.6, status: 'decided', choice: null })
+  expect(result.decisions[1]?.confidence).toBeCloseTo(0.4)
+  const wire = fetcher.mock.calls[0]?.[1]?.body
+  if (typeof wire !== 'string') throw new Error('Expected JSON request')
+  const body = JSON.parse(wire) as { questions: Record<string, unknown> }
+  expect(body.questions.violation).toEqual({ type: 'noul', instructions: 'Does the change violate the supplied rule?' })
+  expect(body.questions.risk).toMatchObject({ criteria: ['Cosmetic', 'Behavioral', 'Security sensitive'] })
+})
+
+it('rejects contradictory choices and invalid rubric scores instead of trusting a confidence field', async () => {
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json(answer(0.99, 'planner'))))
+  await expect(submitDecision(settings, input, 'fixture-key', [], signal)).rejects.toMatchObject({ code: 'DECISION_INVALID_RESPONSE' })
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({ model: settings.model, answers: {
+    route: { type: 'choice', choice: 'reader', confidence: 1, probabilities: { reader: 0.51, planner: 0.49 } },
+  } })))
+  expect((await submitDecision(settings, input, 'fixture-key', [], signal)).decisions[0]).toMatchObject({ status: 'uncertain', choice: null })
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({ model: settings.model, answers: {
+    risk: { type: 'score', score: 2, confidence: 1, probabilities: { 0: 1, 1: 0, 2: 0 } },
+  } })))
+  await expect(submitDecision(settings, { context: 'Evidence', questions: [{ id: 'risk', type: 'score', question: 'Risk?', levels: ['Low', 'Medium', 'High'] }] }, 'fixture-key', [], signal))
+    .rejects.toMatchObject({ code: 'DECISION_INVALID_RESPONSE' })
+})
+
+it.each([
+  { id: 'bad', question: 'Missing options' },
+  { id: 'bad', type: 'score', question: 'Missing levels' },
+  { id: 'bad', type: 'noul', question: 'Unused options', options: [] },
+])('rejects an incomplete typed question before a paid request: $question', async (question) => {
+  const fetcher = vi.fn(); vi.stubGlobal('fetch', fetcher)
+  await expect(submitDecision(settings, { context: 'Evidence', questions: [question as never] }, 'fixture-key', [], signal))
+    .rejects.toMatchObject({ code: 'DECISION_OPTIONS_INVALID' })
+  expect(fetcher).not.toHaveBeenCalled()
+})
