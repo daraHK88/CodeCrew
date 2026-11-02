@@ -686,6 +686,12 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     description: 'Own global preferences independently of preset activation and agent lifetime.',
     methods: [
       {
+        signature: 'anchoredEdits(): boolean',
+        description: 'Choose the editing default for a new filesystem tool scope.',
+        parameters: [],
+        returns: 'Whether anchored read and edit tools should be enabled by default.',
+      },
+      {
         signature: 'skills(): SkillPolicy',
         description: 'Read the global skill policy.',
         parameters: [],

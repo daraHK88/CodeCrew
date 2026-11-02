@@ -10,6 +10,7 @@ import type { GenericCallView, ReadResultView, ToolResult } from '@deepseek-ai/d
 import type {} from '@deepseek-ai/dsh-fs'
 import { buildWindow, formatReadOutput, langFromPath, readMetaFromMeta } from './read-render.ts'
 import { resolveRegularReadTarget } from './read-target.ts'
+import { lineAnchorSeed } from './line-anchors.ts'
 
 /** Default and maximum number of lines returned by one `read` call (the `readLimit` config). */
 export const READ_LIMIT = 2000
@@ -22,6 +23,8 @@ export const STREAM_MIN_SIZE = 10 * 1024 * 1024
 
 /** Resolved read-tool caps — plugin config after defaulting (see `Config` in index.ts). */
 export interface ReadToolCaps {
+  /** Render version-bound anchors for the optional edit_lines tool. */
+  anchoredEdits?: boolean
   /** Default and maximum number of lines returned by one call. */
   limit: number
   /** Maximum characters returned for a single line. */
@@ -98,6 +101,7 @@ export function applyReadTool(ctx: Context, caps: ReadToolCaps): void {
               properties: {
                 number: { type: 'integer', required: true },
                 text: { type: 'string', required: true },
+                anchor: { type: 'string', description: 'Complete-line reference for edit_lines when anchored editing is enabled.' },
               },
             },
           },
@@ -147,7 +151,9 @@ export function applyReadTool(ctx: Context, caps: ReadToolCaps): void {
         : [await ctx.fs.readText(target, exec.signal)]
       const window = await buildWindow(
         chunks,
-        { offset: input.offset, limit: input.limit, maxLineLength: caps.maxLineLength, maxBytes: caps.maxBytes },
+        { offset: input.offset, limit: input.limit, maxLineLength: caps.maxLineLength, maxBytes: caps.maxBytes,
+          ...caps.anchoredEdits === true ? { anchorSeed: lineAnchorSeed(target, info.version) } : {},
+        },
         target.displayPath,
       )
 

@@ -335,7 +335,7 @@ interface FileReadOutcome {
   /** 1-based first line requested. */
   offset: number
   /** Returned lines, already numbered. */
-  lines: FileTextLine[]
+  lines: AnchoredFileTextLine[]
   /** Exact total line count in the file. */
   totalLines: number
   /** Whether selected output hit the byte cap. */

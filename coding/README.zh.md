@@ -39,6 +39,8 @@ Settings → Coding 控制全局默认模型、reader、implementer、planner、
 
 Settings → Coding 还提供独立 Decision advisor 模型，初始为 OpenRouter Decisions API 上的 `typesafe/jev-1.14`。主管可通过 `coding_decide` 批量处理有歧义的模型或技能选择、并行工作安排、失败分类或保留图像问题。精确修改跳过此步骤。建议本身不能更改模型、权限或任务验收。默认每轮最多两次请求，每次四个问题，超时 2.5 秒，文本上限 12 KB、图像字节上限 2 MiB；置信度低于 0.7 时返回不确定结果。上限和密钥引用可在 profile 配置中修改。失败和日志行为见[团队工具参考](../packages/experimental/tool-agent-team/README.zh.md#coding-policy)。
 
+编码 profile 为新创建的工具全局启用锚点编辑。agent 可用 `edit_lines` 处理重复代码和较大替换，小型唯一修改仍可使用字面量编辑。证据和权衡见[编辑工具约定](../packages/fs/tool-fs/README.zh.md#anchored-editing)和 [Oh My Pi 调研](oh-my-pi-research.md)。
+
 ## 验证和限制
 
 专项测试覆盖 worker 路由、任务描述校验、主管验收、模型切换、记忆隔离和恢复、自动技能以及重复压缩失败。设置保存和刷新流程已在真实浏览器的桌面与手机宽度下验证。原生 TypeScript 7 检查和 Web 构建通过。一次真实 Luna 文案编辑测试完成了读取、修改和验证，但单一样例不能证明整体延迟、token 节省或模型质量；需通过真实编码任务比较后才能作出这些结论。macOS 开发应用已启动并检查；未提供独立安装器，也未替换原应用。

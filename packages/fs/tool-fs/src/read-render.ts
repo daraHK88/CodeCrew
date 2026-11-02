@@ -6,6 +6,7 @@
  */
 
 import { FsError } from '@deepseek-ai/dsh-fs'
+import { lineAnchor } from './line-anchors.ts'
 
 /** Default maximum characters returned for a single line (the `readMaxLineLength` config). */
 export const READ_MAX_LINE_LENGTH = 2000
@@ -15,6 +16,8 @@ export const READ_MAX_BYTES = 50 * 1024
 
 /** Resolved read window. The consumer applies its defaults/caps before calling. */
 export interface ReadWindow {
+  /** Optional file-version seed: only complete lines receive edit anchors. */
+  anchorSeed?: string
   /** 1-based first line to return. */
   offset: number
   /** Maximum number of lines to return. */
@@ -33,10 +36,16 @@ export interface FileTextLine {
   text: string
 }
 
+/** A read line with an optional model-facing anchor; persisted read-card metadata stays plain. */
+export interface AnchoredFileTextLine extends FileTextLine {
+  /** Version-bound edit reference; omitted for clipped lines and plain reads. */
+  anchor?: string
+}
+
 /** The windowed result {@link buildWindow} produces from a file's decoded text. */
 export interface WindowResult {
   /** Returned lines, already numbered. */
-  lines: FileTextLine[]
+  lines: AnchoredFileTextLine[]
   /** Exact total line count in the file. */
   totalLines: number
   /** Whether selected output hit the byte cap. */
@@ -48,7 +57,7 @@ export interface FileReadOutcome {
   /** 1-based first line requested. */
   offset: number
   /** Returned lines, already numbered. */
-  lines: FileTextLine[]
+  lines: AnchoredFileTextLine[]
   /** Exact total line count in the file. */
   totalLines: number
   /** Whether selected output hit the byte cap. */
@@ -56,7 +65,7 @@ export interface FileReadOutcome {
 }
 
 interface WindowAccumulator {
-  lines: FileTextLine[]
+  lines: AnchoredFileTextLine[]
   totalLines: number
   outputBytes: number
   truncatedByBytes: boolean
@@ -79,13 +88,15 @@ function consumeLine(acc: WindowAccumulator, rawLine: string, request: ReadWindo
   if (acc.truncatedByBytes || acc.totalLines < request.offset || acc.lines.length >= request.limit) return
 
   const text = truncateLine(rawLine, request.maxLineLength)
-  const bytes = lineByteSize(text, acc.lines.length)
+  const anchor = request.anchorSeed !== undefined && rawLine.length <= request.maxLineLength
+    ? lineAnchor(request.anchorSeed, acc.totalLines, rawLine) : undefined
+  const bytes = lineByteSize(anchor === undefined ? text : `${anchor}|${text}`, acc.lines.length)
   if (acc.outputBytes + bytes > request.maxBytes) {
     acc.truncatedByBytes = true
     return
   }
   acc.outputBytes += bytes
-  acc.lines.push({ number: acc.totalLines, text })
+  acc.lines.push({ number: acc.totalLines, text, ...(anchor === undefined ? {} : { anchor }) })
 }
 
 function stripCarriageReturn(line: string): string {
@@ -160,7 +171,7 @@ export function formatReadOutput(displayPath: string, outcome: FileReadOutcome):
     footer = `(End of file - total ${outcome.totalLines} lines)`
   }
   const body = outcome.lines.length > 0
-    ? `${outcome.lines.map(line => `${line.number}: ${line.text}`).join('\n')}\n\n${footer}`
+    ? `${outcome.lines.map(line => line.anchor === undefined ? `${line.number}: ${line.text}` : `${line.anchor}|${line.text}`).join('\n')}\n\n${footer}`
     : footer
   return `<path>${displayPath}</path>
 <type>file</type>

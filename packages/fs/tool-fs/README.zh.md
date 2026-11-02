@@ -55,7 +55,7 @@ kind: "package-reference"
 
 ### 配置
 
-所有键均为可选。`read`、`readImage`、`write` 和 `edit` 开关默认为 `true`；将开关设为 `false` 可省略对应工具及其指导文本。`applyPatch` 默认为 `false`，因此默认组合不注册 `apply_patch`；启用 `edit` 的随发行版交付的 `tool-fs` 行（[`dsh-base`](../../bundle/base/cordis.patch.yml) 以及 Web 的 `standard`、`ptc`、`cordis` preset）显式写出 `applyPatch: false`，把这一行改为 `true` 即在 `edit` 旁加入该工具。允许关闭全部五个工具。启用 `readImage` 仍需要附件存储和支持图片输入的模型。关闭 `read` 时仍会校验读取上限。
+所有键均为可选。`read`、`readImage`、`write` 和 `edit` 开关默认为 `true`；将开关设为 `false` 可省略对应工具及其指导文本。`applyPatch` 默认为 `false`，因此默认组合不注册 `apply_patch`；启用 `edit` 的随发行版交付的 `tool-fs` 行（[`dsh-base`](../../bundle/base/cordis.patch.yml) 以及 Web 的 `standard`、`ptc`、`cordis` preset）显式写出 `applyPatch: false`，把这一行改为 `true` 即在 `edit` 旁加入该工具。允许关闭全部工具。启用 `readImage` 仍需要附件存储和支持图片输入的模型。关闭 `read` 时仍会校验读取上限。
 
 | 键 | 默认值 | 含义 |
 |---|---|---|
@@ -64,6 +64,7 @@ kind: "package-reference"
 | `write` | `true` | 注册 `write` 及其指导文本 |
 | `edit` | `true` | 注册 `edit` 及其指导文本 |
 | `applyPatch` | `false` | 注册 `apply_patch` 及其提示 |
+| `anchoredEdits` | 继承全局，否则为 `false` | 为新的工具作用域添加 `edit_lines` 和带锚点读取 |
 | `readLimit` | `2000` | 一次 `read` 调用返回的默认和最大行数 |
 | `readMaxLineLength` | `2000` | 每行截断前保留的字符数 |
 | `readMaxBytes` | `51200` | 一次 `read` 调用所选行的字节上限；溢出时以「已达上限」footer 结束窗口 |
@@ -72,6 +73,23 @@ kind: "package-reference"
 生成的[配置目录](../../../docs/config-catalog.zh.md#deepseek-aidsh-tool-fs)是每个受支持字段及其 JSDoc 的穷尽式真源。
 
 挂载 `fs-observation-policy` 且关闭 `read` 时，`write` 仍可创建文件，成功写入或编辑会记录本会话后续修改所需的版本。未观察过的已有文件仍受保护；关闭 `read` 不会放宽策略。其他文件系统读取方必须发出 `fs/observed`，已有文件才会成为已观察状态。
+
+<a id="anchored-editing"></a>
+### 锚点编辑
+
+在此插件上设置 `anchoredEdits: true`，或不设置该字段以继承 `coding-settings.anchoredEdits`。插件显式设置 `false` 会覆盖全局默认值；`edit: false` 也会关闭锚点编辑，使只读工具作用域保持只读。更改后需要重新创建 agent/工具作用域。字面量 `edit` 和可选的 `apply_patch` 仍然可用。
+
+完整的读取行变为 `12:89abcdef|source text`。将实际的 `number:hash` 引用复制到 `edit_lines`；下列引用仅展示格式，不能直接复用：
+
+```json
+{"file_path":"src/example.ts","edits":[{"op":"replace","start":"12:89abcdef","end":"18:01234567","text":"new complete lines"}]}
+```
+
+每次调用允许针对一个原始文件执行最多 32 个互不重叠的操作。`replace` 的范围包含末行；省略 `end` 表示一行。`insert_before` 和 `insert_after` 仅接受 `start`。空替换文本删除范围。重叠、过期或跨文件引用、无效参数和无变更批次在写入前失败。截断行不提供锚点；空文件使用 `write`。内部规划读取上限为 2 MiB，也适用于大小未知的提供方；更大的文件使用现有编辑器。
+
+锚点绑定规范化目标、完整的不透明文件版本、行号和完整行文本。它们补充提供方在变更锁内执行的完整版本检查。观察授权在内部读取之前执行；沙箱权限使用与 `edit` 相同的控制器。保留 CRLF 和原始文件末尾换行约定；忽略输入文本末尾的一个换行符。成功时返回第一个变更区域的新锚点，最多八行、所选内容最多 2 KiB。其他区域需要再次读取。UI 差异卡保留现有表示方式。
+
+重复代码或较大替换适合此工具，因为模型只需输出新代码。读取前缀和简短结果预览会增加开销，因此并非每个任务都能减少总 token。微小且唯一的修改可用 `edit`；可选的 `apply_patch` 已支持跨文件批量修改。`tests/edit-lines.perf.ts` 的构建后工具诊断检查最终文件一致性，并分别报告请求、读取和结果字节数，不声称模型质量或延迟改善。
 
 ### 策略与沙箱行为
 

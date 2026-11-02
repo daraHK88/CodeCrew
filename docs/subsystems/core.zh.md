@@ -885,6 +885,11 @@ Source: [`packages/core/agent/src/index.ts`](../../packages/core/agent/src/index
 Own global preferences independently of preset activation and agent lifetime.
 
 ```ts cordis-catalog
+/** Choose the editing default for a new filesystem tool scope.
+ * @returns Whether anchored read and edit tools should be enabled by default.
+ */
+anchoredEdits(): boolean
+
 /** Read the global skill policy.
  * @returns the current immutable skill policy for every preset.
  */

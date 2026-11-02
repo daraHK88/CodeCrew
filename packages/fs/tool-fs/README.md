@@ -55,7 +55,7 @@ Field names are snake_case to match Claude Code and existing harness tool schema
 
 ### Configuration
 
-All keys are optional. The `read`, `readImage`, `write`, and `edit` switches default to `true`; set a switch to `false` to omit that tool and its guidance. `applyPatch` defaults to `false`, so the default composition registers no `apply_patch`; the shipped `tool-fs` rows that enable `edit` ([`dsh-base`](../../bundle/base/cordis.patch.yml) and the Web `standard`, `ptc`, and `cordis` presets) state `applyPatch: false`, and changing that one line to `true` adds the tool beside `edit`. All five tools may be disabled. Enabling `readImage` still requires an attachment store and an image-capable model. Read caps remain validated when `read` is disabled.
+All keys are optional. The `read`, `readImage`, `write`, and `edit` switches default to `true`; set a switch to `false` to omit that tool and its guidance. `applyPatch` defaults to `false`, so the default composition registers no `apply_patch`; the shipped `tool-fs` rows that enable `edit` ([`dsh-base`](../../bundle/base/cordis.patch.yml) and the Web `standard`, `ptc`, and `cordis` presets) state `applyPatch: false`, and changing that one line to `true` adds the tool beside `edit`. All tools may be disabled. Enabling `readImage` still requires an attachment store and an image-capable model. Read caps remain validated when `read` is disabled.
 
 | Key | Default | Meaning |
 |---|---|---|
@@ -64,6 +64,7 @@ All keys are optional. The `read`, `readImage`, `write`, and `edit` switches def
 | `write` | `true` | Register `write` and its guidance |
 | `edit` | `true` | Register `edit` and its guidance |
 | `applyPatch` | `false` | Register `apply_patch` and its guidance |
+| `anchoredEdits` | inherit global, otherwise `false` | Add `edit_lines` and anchored reads for new tool scopes |
 | `readLimit` | `2000` | Default and maximum lines returned by one `read` call |
 | `readMaxLineLength` | `2000` | Characters kept per line before truncation |
 | `readMaxBytes` | `51200` | Byte cap on one `read` call's selected lines; overflow ends the window with a capped footer |
@@ -72,6 +73,23 @@ All keys are optional. The `read`, `readImage`, `write`, and `edit` switches def
 The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-aidsh-tool-fs) is the exhaustive source for every accepted field and its JSDoc.
 
 With `fs-observation-policy` mounted and `read` disabled, `write` can still create files, and successful writes or edits record the versions needed for later mutations in that session. Existing unobserved files remain protected; disabling `read` does not relax the policy. Another filesystem reader must emit `fs/observed` for an existing file to become observed.
+
+<a id="anchored-editing"></a>
+### Anchored editing
+
+Set `anchoredEdits: true` on this plugin, or inherit `coding-settings.anchoredEdits` by leaving it unset. An explicit plugin `false` overrides the global default; `edit: false` also suppresses anchored editing so read-only tool scopes stay read-only. Recreate the agent/tool scope after changing this setting. Literal `edit` and optional `apply_patch` remain available.
+
+Complete read lines become `12:89abcdef|source text`. Copy the actual `number:hash` references into `edit_lines`; the following references illustrate the format and are not reusable:
+
+```json
+{"file_path":"src/example.ts","edits":[{"op":"replace","start":"12:89abcdef","end":"18:01234567","text":"new complete lines"}]}
+```
+
+A call accepts up to 32 disjoint operations against one original file. `replace` uses an inclusive range; omit `end` for one line. `insert_before` and `insert_after` accept only `start`. Empty replacement text deletes the range. Overlap, stale or cross-file references, malformed arguments and no-op batches fail before writing. Clipped read lines have no anchor; empty files use `write`. The internal planning read is limited to 2 MiB, including providers of unknown size; larger files use the existing editors.
+
+Anchors bind the canonical target, whole opaque file version, line number and full line text. They supplement the provider's full version check under its mutation lock. Observation authorization precedes the internal read; sandbox permissions follow the same controller as `edit`. CRLF and the original final-newline convention are retained; one trailing newline in supplied text is ignored. A success returns fresh anchors for the first changed region, capped at eight lines and 2 KiB of selected content. Other regions need another read. UI diff cards retain their existing representation.
+
+Choose this tool for repeated code or substantial replacements where emitting only new code helps. It adds read prefixes and a small result preview, so it does not reduce total tokens for every task. Tiny unique changes can use `edit`; optional `apply_patch` already batches changes across files. The built-tool diagnostic at `tests/edit-lines.perf.ts` checks final file equality and reports request, read and result bytes separately, without claiming model quality or latency.
 
 ### Policy and sandbox behavior
 

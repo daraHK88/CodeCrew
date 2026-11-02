@@ -19,6 +19,8 @@ export interface MemoryPolicy {
 }
 /** Live global configuration; preset-local plugins consume these references. */
 export interface Config {
+  /** Default anchored editing for newly created preset-local filesystem tools. */
+  readonly anchoredEdits?: Volatile<boolean>
   readonly skills: Volatile<SkillPolicy>
   readonly memory: Volatile<MemoryPolicy>
 }
@@ -30,6 +32,7 @@ declare module '@deepseek-ai/cordis' {
 /** Own global preferences independently of preset activation and agent lifetime. */
 export class CodingSettings extends Service {
   static Config = z.object({
+    anchoredEdits: z.boolean().default(false).volatile(),
     skills: z.object({
       enabled: z.boolean().default(true), maxSkills: z.number().step(1).min(1).max(4).default(1),
       maxBytes: z.number().step(1).min(1).max(65536).default(12000),
@@ -44,6 +47,11 @@ export class CodingSettings extends Service {
 
   /** @param ctx - global Host scope. @param config - validated live preferences. */
   constructor(ctx: Context, private readonly config: Config) { super(ctx, 'codingSettings') }
+
+  /** Choose the editing default for a new filesystem tool scope.
+   * @returns Whether anchored read and edit tools should be enabled by default.
+   */
+  anchoredEdits(): boolean { return this.config.anchoredEdits?.get() ?? false }
 
   /** Read the global skill policy.
    * @returns the current immutable skill policy for every preset.

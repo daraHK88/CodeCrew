@@ -100,6 +100,8 @@ The package-level contract is enough for most consumers; read these when you nee
 
 `@deepseek-ai/dsh-agent-default-model/coding-settings` owns the global `ctx.codingSettings` service, independently of agent presets. Its volatile `skills` and `memory` settings are read by preset-local consumers; `skills()` and `memory()` return their current immutable policies. The coding settings page edits these global values, while chat model choices remain Session-local. See the [coding profile](../../../coding/README.md) for configuration and operation.
 
+The optional global `anchoredEdits` boolean defaults to `false` and is sampled when filesystem tools are created. A plugin-local value overrides it. The CodeCrew profile enables it; recreate the agent/tool scope after a change. See the [filesystem tool reference](../../fs/tool-fs/README.md#anchored-editing) for the protocol and limits.
+
 <a id="model-experience"></a>
 ## Model Experience
 

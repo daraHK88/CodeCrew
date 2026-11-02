@@ -4075,11 +4075,13 @@ export interface Config {
 ## `@deepseek-ai/dsh-tool-fs`
 
 - `inject`: `tools` · `fs` · `systemPrompt` · `workingDirectory`
-- `source`: [`packages/fs/tool-fs/src/index.ts:27`](../packages/fs/tool-fs/src/index.ts)
+- `source`: [`packages/fs/tool-fs/src/index.ts:29`](../packages/fs/tool-fs/src/index.ts)
 
 ```ts config-catalog
 /** Plugin config (all optional — `Config` supplies the defaults). */
 export interface Config {
+  /** Override the global coding anchored-edit default; false when neither is configured. Literal edit remains available. */
+  anchoredEdits?: boolean
   /** Register `read` and its guidance. Defaults to true. */
   read?: boolean
   /** Register `read_image` while an attachment store is mounted. Defaults to true. */

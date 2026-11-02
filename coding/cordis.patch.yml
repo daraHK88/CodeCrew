@@ -54,6 +54,7 @@
     - id: coding-settings
       name: '@deepseek-ai/dsh-agent-default-model/coding-settings'
       config:
+        anchoredEdits: true
         skills:
           enabled: true
           maxSkills: 1

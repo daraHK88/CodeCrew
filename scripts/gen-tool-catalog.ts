@@ -407,10 +407,10 @@ const TOOL_PACKAGES: ToolPackage[] = [
       // The catalog seam marker opts into
       // the attachments-conditional image schema without attachment I/O.
       await ctx.plugin(CatalogAttachmentStore)
-      await ctx.plugin(ToolFs, { applyPatch: true })
+      await ctx.plugin(ToolFs, { applyPatch: true, anchoredEdits: true })
     },
     note:
-      'The read-before-write/edit policy is added by `@deepseek-ai/dsh-fs-observation-policy` (an `fs/*` event-gate plugin, no schema change); a deployment that loads these tools is expected to also load it. The image tool is not registered without `ctx.attachments`; its schema is route-independent, and execution refuses unless the exact routed model declares image input. `apply_patch` registers only with `applyPatch: true`; the catalog sets it so the schema is documented, while shipped compositions keep the switch off on their `tool-fs` rows.',
+      'The read-before-write/edit policy is added by `@deepseek-ai/dsh-fs-observation-policy` (an `fs/*` event-gate plugin, no schema change); a deployment that loads these tools is expected to also load it. The image tool is not registered without `ctx.attachments`; its schema is route-independent, and execution refuses unless the exact routed model declares image input. `edit_lines` and read anchors register with `anchoredEdits: true`; all edits use the existing observation and sandbox policies. `apply_patch` registers only with `applyPatch: true`; the catalog sets it so the schema is documented, while shipped compositions keep the switch off on their `tool-fs` rows.',
   },
   {
     pkg: '@deepseek-ai/dsh-tool-fs-search',

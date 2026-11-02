@@ -100,6 +100,8 @@ await ctx.agentDefaultModel.saveSelection({ provider, model, reasoningEffort: 'h
 
 `@deepseek-ai/dsh-agent-default-model/coding-settings` 提供全局 `ctx.codingSettings` 服务，其生命周期独立于 agent preset。动态 `skills` 和 `memory` 配置由 preset 内的消费者读取；`skills()` 和 `memory()` 返回当前只读策略。Coding 设置页编辑这些全局值，而聊天模型选择仅作用于当前 Session。配置和运行方式见 [coding profile](../../../coding/README.zh.md)。
 
+可选全局布尔值 `anchoredEdits` 默认为 `false`，在创建文件系统工具时读取。插件局部值可覆盖它。CodeCrew profile 启用此选项；更改后需要重新创建 agent/工具作用域。协议与限制见[文件系统工具参考](../../fs/tool-fs/README.zh.md#anchored-editing)。
+
 <a id="model-experience"></a>
 ## 模型体验
 
