@@ -43,7 +43,7 @@ function runtimeContextText(request: GenerateOptions) {
 
 const SIGNAL = new AbortController().signal
 const TOOL_NAMES = [
-  'team_dispatch', 'team_dispatch_status', 'team_task_report', 'team_dispatch_cancel',
+  'team_checkpoint', 'team_dispatch', 'team_dispatch_status', 'team_task_report', 'team_dispatch_cancel',
   'select_model_profile',
   'spawn_teammate',
   'send_message',
@@ -997,6 +997,7 @@ it('loads Jev-selected permitted skills automatically and shares the turn budget
   vi.stubGlobal('fetch', fetcher)
   try {
     await runTurn(lead, 'Diagnose intermittent cancellation failures in the background task runner.')
+    expect(adapter.requests.length, JSON.stringify(lead.session.snapshotEvents().filter(event => event.type === 'turn/end').at(-1)?.data)).toBeGreaterThan(0)
     expect(JSON.stringify(adapter.requests[0]?.messages)).toContain('SYNTHETIC_DEBUGGING_INSTRUCTIONS')
     expect(JSON.stringify(lead.session.snapshotEvents())).toContain('Decision request budget reached')
     expect(fetcher).toHaveBeenCalledTimes(1)
@@ -1067,8 +1068,8 @@ it('dispatches an approved route and exposes bounded reports without accepting w
     planner: { provider: 'mock', model: 'capable-supervisor' },
   } } } as never)
   const task = await ctx.agentTeams.createTask(lead, { subject: 'Read source', description: '## Objective\nInspect source.\n## Inputs\nsrc/example.js\n## Scope\nNone; read-only.\n## Acceptance\nConcrete findings.\n## Verification\nInspect assertions.\n## Stop conditions\nReport missing input.' })
-  const args = { assignments: [{ task_id: task.id, expected_revision: task.revision, name: 'dispatched-reader', model_profile: 'reader' }] }
-  expect(text(await execute(ctx, lead, 'team_dispatch', { assignments: [{ ...args.assignments[0], model_profile: 'unknown' }] }))).toContain('Unknown worker model profile')
+  const args = { goal: 'Inspect the assigned source and verify findings', assignments: [{ task_id: task.id, expected_revision: task.revision, name: 'dispatched-reader', model_profile: 'reader' }] }
+  expect(text(await execute(ctx, lead, 'team_dispatch', { ...args, assignments: [{ ...args.assignments[0], model_profile: 'unknown' }] }))).toContain('Unknown worker model profile')
   expect(ctx.agentTeams.listDispatches(lead)).toHaveLength(0)
   expect(text(await execute(ctx, lead, 'team_dispatch', args))).toContain('"queued":1')
   expect(lead.model.current()).toMatchObject({ provider: 'mock', model: 'capable-supervisor' })
@@ -1090,4 +1091,49 @@ it('dispatches an approved route and exposes bounded reports without accepting w
   expect(text(await execute(ctx, lead, 'team_dispatch_cancel', { task_id: task.id }))).toContain('"cancelled":true')
   expect(ctx.agentTeams.getTask(lead, task.id)).toMatchObject({ status: 'pending' })
   expect(ctx.agents.get(worker.id)).toBeUndefined()
+})
+
+it('restores the coordinator goal after the retained runtime snapshot is replaced', async () => {
+  const { ctx, lead, adapter } = await setup([textResponse('first'), textResponse('continued')])
+  const goal = 'Finish the keyboard-accessible dashboard without losing task state'
+  const saved = await execute(ctx, lead, 'team_checkpoint', {
+    expected_revision: 0, goal, constraints: ['Preserve data'], next_actions: ['Verify mobile overflow'],
+  })
+  expect(saved.isError).toBe(false)
+  await runTurn(lead, 'Continue the project')
+  expect(JSON.stringify(adapter.requests[0]?.messages)).toContain(goal)
+  const context = lead.session.snapshotEvents().findLast(event => event.type === 'user/message'
+    && event.data.source.kind === 'runtime-context')
+  expect(context).toBeDefined()
+  lead.session.append('user/message', createUserMessage({ source: { kind: 'user' }, content: [{ type: 'text', text: 'Earlier conversation summarized.' }] }), {
+    surfaceOp: { op: 'replace', startSeq: context!.seq, endSeq: context!.seq }, sourceEventSeqs: [context!.seq],
+  })
+  await runTurn(lead, 'Continue with the current goal and next actions')
+  expect(JSON.stringify(adapter.requests[1]?.messages)).toContain(goal)
+  expect(runtimeContextText(adapter.requests[1]!)).toContain('Verify mobile overflow')
+  const snapshots = lead.session.snapshotEvents().filter(event => event.type === 'user/message'
+    && event.data.source.kind === 'runtime-context')
+  expect(snapshots).toHaveLength(2)
+})
+
+it('routes substantial automatic UI work to the approved Lead profile without changing routine or other agents', async () => {
+  const { ctx, lead, fiber } = await setup([])
+  await fiber.dispose()
+  const settings = { uiProfile: 'designer', requireTaskBrief: false, defaultWorkerProfile: '', workerProfiles: {
+    designer: { provider: 'mock', model: 'ui-model' },
+  } }
+  const routedFiber = await ctx.plugin(toolTeam, { coding: settings } as never)
+  const other = await ctx.agentLoop.create(SessionId('other-ui-lead'), { provider: 'mock', model: 'mock' })
+  const input = { agent: lead, names: ['design-distinctive-frontends'], task: 'Build a polished responsive dashboard', signal: SIGNAL }
+  await lead.ctx.serial('skills/automatic-selected', { ...input, agent: other, names: ['diagnosing-bugs'] })
+  expect(lead.model.current()?.model).toBe('mock')
+  await lead.ctx.serial('skills/automatic-selected', { ...input, names: ['diagnosing-bugs'] })
+  expect(lead.model.current()?.model).toBe('mock')
+  await lead.ctx.serial('skills/automatic-selected', input)
+  expect(lead.model.current()?.model).toBe('ui-model')
+  expect(other.model.current()?.model).toBe('mock')
+  await routedFiber.dispose()
+  lead.model.select({ provider: 'mock', model: 'mock' })
+  await lead.ctx.serial('skills/automatic-selected', input)
+  expect(lead.model.current()?.model).toBe('mock')
 })

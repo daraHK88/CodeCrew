@@ -102,6 +102,10 @@ await ctx.agentDefaultModel.saveSelection({ provider, model, reasoningEffort: 'h
 
 可选全局布尔值 `anchoredEdits` 默认为 `false`，在创建文件系统工具时读取。插件局部值可覆盖它。CodeCrew profile 启用此选项；更改后需要重新创建 agent/工具作用域。协议与限制见[文件系统工具参考](../../fs/tool-fs/README.zh.md#anchored-editing)。
 
+## 协调与路由
+
+全局技能策略包含可选的正则 `rules[].pattern`、紧凑目录 `catalogMaxSkills` 和描述长度限制。零保留完整目录；正数启用相关候选列表，并通过 `skill_search` 发现全部获准技能。技能消费方在激活时读取目录设置，实时读取路由规则。
+
 <a id="model-experience"></a>
 ## 模型体验
 

@@ -149,6 +149,12 @@ member scope 上的一个 `team:policy` 段落说明共享的协作规则；固�
 
 模板可在 `maxQuestions`（默认八）内附加自定义类型问题。审查出错时需要完整审查。浏览器建议不执行交互；压缩建议不删减历史、不覆盖原生自动压缩，也不替代工作区摘要。Jev 不授予权限、不验收任务，也不替代测试和主管验证。
 
+## 协调与路由
+
+`team_checkpoint` 使用当前检查点修订号保存 Lead 的目标、约束和后续行动。`team_dispatch` 可同时携带初始 `goal`、`constraints` 和 `next_actions`，无需额外调用；要求完整任务简报时，首批分配必须包含目标。`team_dispatch_status` 返回检查点。必需的运行时上下文在压缩后恢复此有界检查点，并要求模型读取最新任务修订、服从最新用户请求。
+
+自动选择 `design-distinctive-frontends` 或 `impeccable` 后，可通过 `coding.uiProfile` 选择已批准的 Lead 路由。验证后于下一模型步骤生效，无需分类器调用。空值保留当前路由；worker 继续使用各自分配的模型。CodeCrew 的本地规则面向实质性 UI 工作，精确小改保持直接执行。拥有后台检查的分配保持 `waiting` 并占用槽位；提交 ready 前须收集真实结果。
+
 <a id="model-experience"></a>
 ## 模型体验
 

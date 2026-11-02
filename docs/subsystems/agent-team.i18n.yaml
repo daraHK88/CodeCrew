@@ -12,7 +12,7 @@
   en: 2aed7dd369f47747
   zh: 4f080e50c584ad37
 /agent-teams/shared-task-dag:
-  en: f62f8429b1128d01
+  en: 141c6eaeb5ac13ec
   zh: fe9fb196d54aa745
 /agent-teams/web-projection:
   en: 6af99eff8036597a
@@ -20,3 +20,6 @@
 /agent-teams/replay:
   en: fe32f71c6d799ebc
   zh: aa2b6ccddba8cfd5
+/agent-teams/project-checkpoint:
+  en: adb799919812384e
+  zh: a6485a5d752b014b

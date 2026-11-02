@@ -93,11 +93,11 @@ The [Agent Teams Agent Note](../../../.agents/notes/implemented/feature/2026-08-
 
 | File | Role |
 |---|---|
-| [`src/index.ts`](src/index.ts) | Plugin entry: config, the fixed policy text, and the ten scoped tool registrations |
+| [`src/index.ts`](src/index.ts) | Plugin entry: config, the fixed policy text, and the scoped tool registrations |
 
 ### Policy and tools
 
-One `team:policy` section on the member scope states the shared coordination rules; the fixed text and the ten tool registrations are declared in [`src/index.ts`](src/index.ts). The ten tool schemas are registered in scopes recognized as Team members at publication. Scoped registrations with the same names as the legacy global continuable-subagent controls shadow those globals for team members only.
+One `team:policy` section on the member scope states the shared coordination rules; the fixed text and the tool registrations are declared in [`src/index.ts`](src/index.ts). The tool schemas are registered in scopes recognized as Team members at publication. Scoped registrations with the same names as the legacy global continuable-subagent controls shadow those globals for team members only.
 
 ### Scoped registration and teardown
 
@@ -147,6 +147,12 @@ Unpinned substantial worker assignments can use Jev to choose an approved profil
 
 Recipes can include additional typed questions within `maxQuestions` (default eight). Review errors require full review. Browser advice executes no interaction; compaction advice does not prune history, override native automatic compaction or replace the workspace brief. Jev never grants permission, accepts a task or substitutes for tests and supervisor verification.
 
+## Coordinator and routing
+
+`team_checkpoint` preserves the Lead's goal, constraints and next actions using the current checkpoint revision. `team_dispatch` can include the initial `goal`, `constraints` and `next_actions`, avoiding a separate call; with required briefs its first batch needs a goal. `team_dispatch_status` returns the checkpoint. Required runtime context restores this bounded checkpoint after compaction; it instructs the model to read current task revisions and defer to the latest user request.
+
+`coding.uiProfile` optionally selects an approved Lead route after automatic selection of `design-distinctive-frontends` or `impeccable`. It applies at the next model step after validation, without a classifier call. Empty retains the current route; workers retain their independently assigned models. CodeCrew's local rule targets substantial UI work and keeps exact edits on the direct path. A `waiting` assignment retains its slot while owned background checks run; collect their actual results before reporting ready.
+
 <a id="model-experience"></a>
 ## Model Experience
 
@@ -154,7 +160,7 @@ Recipes can include additional typed questions within `maxQuestions` (default ei
 
 #### What the model sees
 
-One shared system policy covers Team availability, shared-cwd safety, task coordination, Steer delivery, inbox acceptance, and the Lead’s duty to wait. All ten schemas are identical for Leads and teammates; execution enforces Lead-only operations. Required runtime context states `You are the Team Lead named "lead".` or `You are teammate "<name>".` with `Your Team Lead is named "lead".`, plus roster and messaging instructions. Identity comes from current Team membership, survives optional-context suppression, and is restored when compaction removes its snapshot. An ordinary fork from a teammate receives its current Lead identity.
+One shared system policy covers Team availability, shared-cwd safety, task coordination, Steer delivery, inbox acceptance, and the Lead’s duty to wait. The schemas are identical for Leads and teammates; execution enforces Lead-only operations. Required runtime context states `You are the Team Lead named "lead".` or `You are teammate "<name>".` with `Your Team Lead is named "lead".`, plus roster and messaging instructions. Identity comes from current Team membership, survives optional-context suppression, and is restored when compaction removes its snapshot. An ordinary fork from a teammate receives its current Lead identity.
 
 #### Token effect
 

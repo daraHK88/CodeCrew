@@ -128,6 +128,10 @@ Models 页面包含 **DeepSeek 账号**（`deepseek-account`，英文为 **DeepS
 
 挂载全局 `coding-settings` 插件时，Settings 提供 Coding 页面，用于设置全局默认模型、获准 worker 路由、任务范围策略、自动技能、记忆和并行工具调用。模型选项来自实时提供方目录。每次修改均通过现有受版本保护的配置表单保存，并显示保存中、成功或失败状态。聊天内模型选择不保存此全局默认值。 Decision advisor 控件可分别启用 Jev 技能后备选择、未指定模型的 worker 自动路由和显式工作区文件的有界判断。
 
+## 协调与路由
+
+全局 UI 设计与构建配置为自动识别的实质性 UI 工作选择已批准角色，独立于委派监督者和单聊模型。空值保留当前路由。此控件保存 `coding.uiProfile`，不会改写 worker 路由。
+
 <a id="model-experience"></a>
 ## 模型体验
 

@@ -898,7 +898,7 @@ export interface Config {
 ## `@deepseek-ai/dsh-experimental-agent-team`
 
 - `inject`: `agents` · `sessions` · `sessionPersistence` · `sessionProjections` · `subagents`
-- `source`: [`packages/experimental/agent-team/src/types.ts:190`](../packages/experimental/agent-team/src/types.ts)
+- `source`: [`packages/experimental/agent-team/src/types.ts:207`](../packages/experimental/agent-team/src/types.ts)
 
 ```ts config-catalog
 /** Team-service deployment limits. */
@@ -1456,7 +1456,7 @@ export interface Config {
 
 - `inject`: `agents` · `agentTeams` · `tools` · `systemPrompt`
 - `refs`: `Volatile` (`@deepseek-ai/cordis`)
-- `source`: [`packages/experimental/tool-agent-team/src/index.ts:50`](../packages/experimental/tool-agent-team/src/index.ts)
+- `source`: [`packages/experimental/tool-agent-team/src/index.ts:53`](../packages/experimental/tool-agent-team/src/index.ts)
 
 ```ts config-catalog
 /** Tool routing configuration. */
@@ -1475,6 +1475,8 @@ export interface Config {
 export interface CodingTeamSettings {
   /** Approved profile selected for the Lead after authorizing substantial dispatched work; empty retains its current model. */
   supervisorProfile?: string
+  /** Approved Lead profile for substantial automatically selected UI work; empty keeps the current model. */
+  uiProfile?: string
   /** Optional bounded OpenRouter decision advisor settings. */
   decisions?: DecisionSettings
   /** Require a ready task with a complete coding brief before spawning a worker. */
@@ -4351,7 +4353,7 @@ export interface Config {
 
 - `inject`: `agents` · `tools` · `skills` · `workingDirectory`
 - `refs`: `Volatile` (`@deepseek-ai/cordis`)
-- `source`: [`packages/skill/tool-skill/src/index.ts:94`](../packages/skill/tool-skill/src/index.ts)
+- `source`: [`packages/skill/tool-skill/src/index.ts:104`](../packages/skill/tool-skill/src/index.ts)
 
 ```ts config-catalog
 /** Model-facing skill catalog configuration. */
@@ -4360,6 +4362,8 @@ export interface Config {
   automatic?: Volatile<AutomaticSkillSettings>
   /** Maximum normalized description length rendered in the session catalog; minimum 3. */
   catalogDescriptionMaxLength?: number
+  /** Zero keeps the full catalog; positive values enable skill_search and bound task-relevant entries. */
+  catalogMaxSkills?: number
 }
 
 /** Bounded, local skill selection rules; first matching rule wins. */
@@ -4374,6 +4378,8 @@ export interface AutomaticSkillSettings {
   rules: {
     /** Case-insensitive phrases matched against the admitted assignment. */
     keywords: string[]
+    /** Optional case-insensitive regular expression; when keywords exist, both conditions must match. */
+    pattern?: string
     /** Skill names tried in order within the visibility and size limits. */
     skills: string[]
   }[]

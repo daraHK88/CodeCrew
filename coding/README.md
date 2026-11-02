@@ -48,3 +48,9 @@ The coding profile enables anchored editing globally for newly created tools. Ag
 ## Verification and limits
 
 Focused tests cover worker routing, brief validation, supervisor acceptance, model changes, memory isolation and restoration, automatic skills, and repeated compaction failures. The settings save/reload flow was exercised in a real browser at desktop and mobile widths. Native TypeScript 7 checks and the Web build passed. A live Luna copy-edit smoke completed read, edit and exact verification in approximately 7.7 seconds with no workers or extra workflow. One fixture does not establish overall latency, token savings, or model quality; compare real coding tasks before making those claims. The macOS development app has been launched and checked; no standalone installer or replacement of the original app is included.
+
+## Coordinator and routing
+
+The profile now uses a four-skill local shortlist with paged full discovery, automatic body deduplication, and a deterministic substantial-UI rule. Settings → Coding selects the UI design and build profile independently from the supervisor; the initial UI role is implementer. Small reads and exact edits keep the inexpensive direct route. A complete UI brief authorizes ordinary reversible design choices without a confirmation ceremony.
+
+The supervisor preserves the goal through `team_checkpoint` or the first dispatch. Ready independent assignments start together; owned background jobs hold workers in `waiting` and completion resumes them. Tasks and checkpoints survive interruption and history compaction, while uncertain restart assignments require inspection. Worktree integration and final acceptance stay under supervisor control. See the [evaluation](evaluation.md) for measured results and remaining limits.

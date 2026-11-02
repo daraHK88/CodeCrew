@@ -331,6 +331,25 @@ Source: [`packages/skill/skill/src/index.ts`](../../packages/skill/skill/src/ind
 
 ### `skills/*` events
 
+<a id="skillsautomatic-selected--serial"></a>
+
+#### `skills/automatic-selected` — serial
+
+Valid, permitted automatic choices whose complete instructions fit the configured budget.
+
+```ts cordis-catalog
+/**
+ * Valid, permitted automatic choices whose complete instructions fit the configured budget.
+ * @mode serial
+ * @param input - Exact agent, admitted assignment, chosen names and step cancellation; retained identical bodies remain selected.
+ */
+'skills/automatic-selected'(input: { agent: Agent; names: readonly string[]; task: string; signal: AbortSignal }): Promise<void>
+```
+
+Types: [Agent](core.md)
+
+Source: [`packages/skill/tool-skill/src/index.ts`](../../packages/skill/tool-skill/src/index.ts)
+
 <a id="skillschange--emit"></a>
 
 #### `skills/change` — emit

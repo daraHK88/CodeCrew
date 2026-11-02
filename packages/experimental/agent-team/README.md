@@ -177,6 +177,12 @@ Read these pages when the package-level contract is not enough. They move from t
 Workers use `reportTask` to provide changed files, executed checks and risks. A ready report requires at least one check; it does not complete the task. Completion of dispatched work is Lead-only, requires a ready report and nonempty verification evidence, and saves that evidence with the task revision. Reports are claims to inspect, not automatically verified command results. Inactive or interrupted workers become blocked without replaying uncertain edits. `cancelDispatch` waits for startup and child teardown before releasing ownership; retained files and commits remain. Queued authorizations recover when the Lead Session opens. Invalid durable state stops dispatch and reports the uncertainty; no automatic retry runs.
 
 
+## Coordinator and routing
+
+The Lead can save a compare-and-set `TeamCheckpoint` through `updateCheckpoint`: the project goal, up to eight constraints and eight next actions, within 4096 UTF-8 bytes. It is stored in `team/checkpoint`, restored after restart and exposed in `agentTeam.checkpoint`. Tasks, dependencies, assignments and accepted verification remain authoritative on the task board. A newer user request takes precedence over a saved goal.
+
+Ready startup waits for the complete authorization batch, then starts independent workers concurrently within available slots. A worker with live owned jobs stays in `waiting`; completion notifications continue its existing turn without polling or killing the job. Reporting ready while jobs remain active is rejected. Job lifecycle, task commits and worker disposal wake the scheduler. Restarted uncertain assignments remain blocked for explicit inspection, rather than replaying edits.
+
 <a id="model-experience"></a>
 
 ### Browser projection

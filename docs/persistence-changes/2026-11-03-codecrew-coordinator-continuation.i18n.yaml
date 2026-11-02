@@ -1,0 +1,28 @@
+# Bilingual-pair consistency record for 2026-11-03-codecrew-coordinator-continuation.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/persistence-changes/2026-11-03-codecrew-coordinator-continuation.md
+/:
+  en: 3d5a424ae7d7e46b
+  zh: c22a8e4a62d8cc1a
+/2026-11-03-codecrew-coordinator-continuation:
+  en: 012300b4ff97e14d
+  zh: 6bbd56c33622a74e
+/2026-11-03-codecrew-coordinator-continuation/summary:
+  en: 1bca8b65c282725f
+  zh: 03215302fdae32c6
+/2026-11-03-codecrew-coordinator-continuation/table-of-contents:
+  en: 6cf314a069ceb451
+  zh: 9adff678e9ecab3b
+/2026-11-03-codecrew-coordinator-continuation/declaration:
+  en: 6907136f28e48c90
+  zh: 02f8298485f3d8e7
+/2026-11-03-codecrew-coordinator-continuation/compatibility:
+  en: 3138729765ed7357
+  zh: d29903fca1e0dbb3
+/2026-11-03-codecrew-coordinator-continuation/verification:
+  en: 7b2b365775dd2a9e
+  zh: cd48e2b921b828a6
+/2026-11-03-codecrew-coordinator-continuation/dev-note:
+  en: b75c8458928b72b9
+  zh: 003ba4e17b4b5269

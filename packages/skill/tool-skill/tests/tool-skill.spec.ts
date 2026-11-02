@@ -69,10 +69,11 @@ async function setup(home: string, config: object = {}): Promise<Context> {
   return ctx
 }
 
-function agentForCwd(cwd: string): Agent {
-  const id = SessionId(`tool-skill-${cwd}`)
+function agentForCwd(cwd: string, parentSession?: SessionId): Agent {
+  const id = SessionId(`tool-skill-${cwd}${parentSession === undefined ? '' : '-worker'}`)
   const session = Session.create(id, [], {
     version: SESSION_FORMAT_VERSION, id, createdAt: 0, cwd, isSeeded: false,
+    ...parentSession === undefined ? {} : { parentSession },
   })
   return {
     ctx: new Context(),
@@ -1309,4 +1310,151 @@ it('avoids duplicating unchanged automatic instructions and reloads edited skill
   await writeSkill(join(home, '.agents', 'skills'), 'debugging', 'Debug issues', 'UPDATED_SKILL_BODY')
   const fresh = await load()
   expect(JSON.stringify(fresh.content)).toContain('UPDATED_SKILL_BODY')
+})
+
+describe('bounded automatic rules and compact discovery', () => {
+  const uiPattern = '^(?!\\s*(?:change|update|rename|replace)\\b)(?![\\s\\S]*\\b(?:backend|api endpoint)\\b)(?=[\\s\\S]*\\b(?:build|create|implement|redesign)\\b)(?=[\\s\\S]*\\b(?:dashboard|website|frontend|web app)\\b)[\\s\\S]+$'
+  const input = (text: string) => createUserMessage({ content: [{ type: 'text', text }], source: { kind: 'user' } })
+
+  it('matches natural UI builds locally, excludes exact edits and backend tasks, and reports only fitting choices', async () => {
+    const home = await tempDir('automatic-pattern')
+    await writeSkill(join(home, '.agents/skills'), 'designing', 'Build frontend UI', 'Design and verify responsive states.')
+    const ctx = await setup(home, { automatic: { enabled: true, maxSkills: 3, maxBytes: 4096,
+      rules: [{ pattern: uiPattern, skills: ['missing', 'designing', 'oversized'] }] } })
+    ctx.skills.register({ name: 'oversized', description: 'Too large', source: 'runtime', content: 'x'.repeat(5000) })
+    const owner = agentForCwd(home)
+    const fallback = vi.fn(() => Promise.resolve([]))
+    const selected = vi.fn()
+    owner.ctx.on('skills/select-automatic', fallback)
+    owner.ctx.on('skills/automatic-selected', selected)
+    const decision = await proposeStep(ctx, owner, [input('Build a polished responsive team analytics dashboard')])
+    expect(fallback).not.toHaveBeenCalled()
+    expect(JSON.stringify(decision)).toContain('Design and verify responsive states.')
+    expect(selected).toHaveBeenCalledWith(expect.objectContaining({ agent: owner, names: ['designing'], task: 'build a polished responsive team analytics dashboard' }))
+    for (const text of ['Change the dashboard button label', 'Build the backend dashboard API endpoint']) {
+      selected.mockClear()
+      const excluded = await proposeStep(ctx, owner, [input(text)])
+      if (excluded.kind !== 'enter') throw new Error('expected enter')
+      expect(excluded.messages.some(message => message.source.kind === 'skill-automatic')).toBe(false)
+      expect(selected).not.toHaveBeenCalled()
+    }
+  })
+
+
+  it('ignores worker reports as new assignments while accepting parent-authored worker briefs', async () => {
+    const home = await tempDir('automatic-peer-reports')
+    await writeSkill(join(home, '.agents/skills'), 'designing', 'Build UI', 'Design instructions.')
+    const ctx = await setup(home, { automatic: { enabled: true, rules: [{ keywords: ['build'], skills: ['designing'] }] } })
+    const parent = agentForCwd(home)
+    const worker = agentForCwd(home, parent.id)
+    const relay = (senderSessionId: SessionId) => createUserMessage({
+      content: [{ type: 'text', text: 'Build the dashboard; ready for review.' }],
+      source: { kind: 'agent-message', form: 'relay', senderSessionId },
+    })
+    const report = await proposeStep(ctx, parent, [relay(worker.id)])
+    if (report.kind !== 'enter') throw new Error('expected enter')
+    expect(report.messages.some(message => message.source.kind === 'skill-automatic')).toBe(false)
+    const assignment = await proposeStep(ctx, worker, [relay(parent.id)])
+    expect(JSON.stringify(assignment)).toContain('Design instructions.')
+  })
+
+  it('rejects invalid patterns when the plugin loads', async () => {
+    await expect(setup(await tempDir('invalid-rule'), { automatic: { enabled: true, rules: [{ pattern: '[', skills: [] }] } }))
+      .rejects.toThrow('invalid automatic rule pattern')
+  })
+
+  it('does not reinject retained bodies on fresh assignments, but reloads changed and compacted instructions', async () => {
+    const home = await tempDir('automatic-followup')
+    await writeSkill(join(home, '.agents/skills'), 'designing', 'Build UI', 'Initial instructions.')
+    const ctx = await setup(home, { automatic: { enabled: true, rules: [{ keywords: ['build'], skills: ['designing'] }] } })
+    const owner = agentForCwd(home)
+    const request = () => proposeStep(ctx, owner, [input('Build the dashboard')])
+    const first = await request()
+    if (first.kind !== 'enter') throw new Error('expected enter')
+    for (const message of first.messages) owner.session.append('user/message', message, { surfaceOp: 'append' })
+    const repeated = await request()
+    if (repeated.kind !== 'enter') throw new Error('expected enter')
+    expect(repeated.messages.some(message => message.source.kind === 'skill-automatic')).toBe(false)
+    await writeSkill(join(home, '.agents/skills'), 'designing', 'Build UI', 'Changed instructions.')
+    const changed = await request()
+    expect(JSON.stringify(changed)).toContain('Changed instructions.')
+    if (changed.kind !== 'enter') throw new Error('expected enter')
+    for (const message of changed.messages) owner.session.append('user/message', message, { surfaceOp: 'append' })
+    await writeSkill(join(home, '.agents/skills'), 'designing', 'Build UI', 'Initial instructions.')
+    const reverted = await request()
+    expect(JSON.stringify(reverted)).toContain('Initial instructions.')
+    if (reverted.kind !== 'enter') throw new Error('expected enter')
+    for (const message of reverted.messages) owner.session.append('user/message', message, { surfaceOp: 'append' })
+    const original = owner.session.snapshotEvents().findLast(event => event.type === 'user/message' && event.data.source.kind === 'skill-automatic')
+    if (original === undefined) throw new Error('expected automatic message')
+    owner.session.append('user/message', createUserMessage({ content: [{ type: 'text', text: 'Checkpoint' }], source: checkpointSource('automatic-hidden') }), {
+      surfaceOp: { op: 'replace', startSeq: original.seq, endSeq: original.seq }, sourceEventSeqs: [original.seq],
+    })
+    expect(JSON.stringify(await request())).toContain('Initial instructions.')
+  })
+
+  it('publishes a truthful bounded shortlist and searches all model-invocable skills with pagination', async () => {
+    const home = await tempDir('compact-search')
+    const ctx = await setup(home, { catalogMaxSkills: 1 })
+    for (const name of ['dashboard-design', 'other-design', 'unrelated']) ctx.skills.register({ name, description: `${name} instructions`, source: 'runtime', content: `${name} body` })
+    await writeSkill(join(home, '.agents/skills'), 'private', 'Private', 'Private body')
+    await writeFile(join(home, '.agents/skills/private/SKILL.md'), '---\nname: private\ndescription: Private\ndisable-model-invocation: true\n---\nSecret body')
+    const owner = agentForCwd(home)
+    const decision = await proposeStep(ctx, owner, [input('Build dashboard design')])
+    if (decision.kind !== 'enter') throw new Error('expected enter')
+    const catalog = decision.messages.find(message => message.source.kind === 'skill-catalog')
+    expect(catalog?.source).toMatchObject({ shortlist: true, entries: [{ name: 'dashboard-design' }] })
+    expect(catalog?.source).not.toHaveProperty('incomplete')
+    expect(JSON.stringify(catalog?.content)).toContain('Other permitted skills remain available')
+    for (const message of decision.messages) owner.session.append('user/message', message, { surfaceOp: 'append' })
+    const continuation = await proposeStep(ctx, owner, [])
+    if (continuation.kind !== 'enter') throw new Error('expected enter')
+    expect(continuation.messages.some(message => message.source.kind === 'skill-catalog')).toBe(false)
+    const search = async (args: { query?: string; offset?: number }) => executeToolFixture(ctx, { name: 'skill_search', arguments: args, agent: owner, callId: ToolCallId('search'), signal: testToolSignal })
+    const first = await search({})
+    expect(JSON.stringify(first.content)).toContain('dashboard-design')
+    expect(JSON.stringify(first.content)).toContain('nextOffset')
+    expect(JSON.stringify((await search({ offset: 2 })).content)).toContain('unrelated')
+    expect(JSON.stringify((await search({ query: 'private' })).content)).not.toContain('private')
+    expect(JSON.stringify((await search({ query: 'other' })).content)).toContain('other-design')
+    expect((await search({ offset: -1 })).isError).toBe(true)
+    const explicit = await proposeStep(ctx, owner, [input('/unrelated')])
+    expect(JSON.stringify(explicit)).toContain('unrelated body')
+  })
+
+  it('keeps automatic loading independent of a shortlist and distinguishes no local matches from failed discovery', async () => {
+    const home = await tempDir('compact-automatic')
+    const ctx = await setup(home, { catalogMaxSkills: 1, automatic: { enabled: true,
+      rules: [{ keywords: ['dashboard'], pattern: '\\bbuild\\b', skills: ['designing'] }] } })
+    ctx.skills.register({ name: 'designing', description: 'Create interfaces', source: 'runtime', content: 'Responsive layout guidance.' })
+    const decision = await proposeStep(ctx, agentForCwd(home), [input('Build a dashboard')])
+    if (decision.kind !== 'enter') throw new Error('expected enter')
+    expect(decision.messages.some(message => message.source.kind === 'skill-automatic')).toBe(true)
+    const catalog = decision.messages.find(message => message.source.kind === 'skill-catalog')
+    expect(catalog?.source).toMatchObject({ shortlist: true, entries: [] })
+    expect(catalog?.source).not.toHaveProperty('incomplete')
+    expect(JSON.stringify(catalog?.content)).not.toContain('discovery failed')
+    const keywordOnly = await proposeStep(ctx, agentForCwd(home), [input('Inspect the dashboard')])
+    if (keywordOnly.kind !== 'enter') throw new Error('expected enter')
+    expect(keywordOnly.messages.some(message => message.source.kind === 'skill-automatic')).toBe(false)
+  })
+
+  it('keeps full discovery if skill_search is restricted and hides search when skill is unavailable', async () => {
+    const home = await tempDir('compact-restricted')
+    const ctx = await setup(home, { catalogMaxSkills: 1 })
+    for (const name of ['first-skill', 'second-skill']) ctx.skills.register({ name, description: 'Visible', source: 'runtime', content: name })
+    const { agent, scope } = await mintAgentScope(ctx, home)
+    scope.ctx.tools.restrict({ deny: ['skill_search'] })
+    const decision = await proposeStep(ctx, agent, [input('Unmatched work')])
+    expect(JSON.stringify(decision)).toContain('first-skill')
+    expect(JSON.stringify(decision)).toContain('second-skill')
+    expect(JSON.stringify(decision)).not.toContain('"shortlist":true')
+    await scope.dispose()
+    const second = await mintAgentScope(ctx, home)
+    second.scope.ctx.tools.restrict({ deny: ['skill'] })
+    const result = await executeToolFixture(ctx, { name: 'skill_search', arguments: {}, agent: second.agent, callId: ToolCallId('hidden-loader'), signal: testToolSignal })
+    expect(result.isError).toBe(true)
+    expect(JSON.stringify(result.content)).not.toContain('first-skill')
+    await second.scope.dispose()
+  })
 })

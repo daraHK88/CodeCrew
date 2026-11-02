@@ -38,8 +38,10 @@ export interface SkillCatalogSource {
   readonly form: 'catalog'
   /** Marks a replacement catalog rather than this session's first publication. */
   readonly update?: true
-  /** Some discovery failed; entries contain only skills found in this observation. Absence means complete. */
+  /** Some discovery failed; absence means discovery completed, while shortlist may still limit published entries. */
   readonly incomplete?: true
+  /** Entries are a task-relevant subset; skill_search discovers other permitted skills. */
+  readonly shortlist?: true
   /** Exactly the entries this message published, in catalog order. */
   readonly entries: readonly { readonly name: string; readonly description: string }[]
 }
@@ -70,6 +72,12 @@ declare module '@deepseek-ai/cordis' {
      * @param input - Admitted assignment and calling agent; no conversation history is supplied.
      */
     'skills/select-automatic'(input: { agent: Agent; task: string; signal: AbortSignal }, next: () => Promise<readonly string[]>): Promise<readonly string[]>
+    /**
+     * Valid, permitted automatic choices whose complete instructions fit the configured budget.
+     * @mode serial
+     * @param input - Exact agent, admitted assignment, chosen names and step cancellation; retained identical bodies remain selected.
+     */
+    'skills/automatic-selected'(input: { agent: Agent; names: readonly string[]; task: string; signal: AbortSignal }): Promise<void>
   }
 }
 
@@ -85,6 +93,8 @@ export interface AutomaticSkillSettings {
   rules: {
     /** Case-insensitive phrases matched against the admitted assignment. */
     keywords: string[]
+    /** Optional case-insensitive regular expression; when keywords exist, both conditions must match. */
+    pattern?: string
     /** Skill names tried in order within the visibility and size limits. */
     skills: string[]
   }[]
@@ -96,6 +106,8 @@ export interface Config {
   automatic?: Volatile<AutomaticSkillSettings>
   /** Maximum normalized description length rendered in the session catalog; minimum 3. */
   catalogDescriptionMaxLength?: number
+  /** Zero keeps the full catalog; positive values enable skill_search and bound task-relevant entries. */
+  catalogMaxSkills?: number
 }
 
 /** Validate and default the model-facing skill catalog configuration. */
@@ -104,14 +116,19 @@ export const Config: z<Config> = z.object({
     enabled: z.boolean().default(false),
     maxSkills: z.number().step(1).min(1).max(4).default(1),
     maxBytes: z.number().step(1).min(1).default(12000),
-    rules: z.array(z.object({ keywords: z.array(z.string()), skills: z.array(z.string()) })).default([]),
+    rules: z.array(z.object({ keywords: z.array(z.string()).default([]), pattern: z.string(), skills: z.array(z.string()) })).default([]),
   }).default({ enabled: false, maxSkills: 1, maxBytes: 12000, rules: [] }).volatile(),
   catalogDescriptionMaxLength: z.number().default(DEFAULT_CATALOG_DESCRIPTION_MAX_LENGTH),
+  catalogMaxSkills: z.number().step(1).min(0).max(50).default(0),
 })
 
 /** Peer-message providers extend the source vocabulary outside this package. */
-function isAssignmentSource(kind: string): boolean {
-  return kind === 'user' || kind === 'agent-message'
+function isAssignmentSource(
+  message: { readonly source: { readonly kind: string; readonly senderSessionId?: unknown } }, agent: Agent,
+): boolean {
+  const source = message.source
+  return source.kind === 'user' || (source.kind === 'agent-message'
+    && 'senderSessionId' in source && source.senderSessionId === agent.session.header.parentSession)
 }
 
 /**
@@ -123,6 +140,9 @@ function isAssignmentSource(kind: string): boolean {
 export function apply(ctx: Context, config: Config = {}): void {
   const catalogDescriptionMaxLength = ctx.get('codingSettings')?.skills().catalogDescriptionMaxLength ?? config.catalogDescriptionMaxLength ?? DEFAULT_CATALOG_DESCRIPTION_MAX_LENGTH
   assertPositiveInteger('catalogDescriptionMaxLength', catalogDescriptionMaxLength, 3)
+  const catalogMaxSkills = ctx.get('codingSettings')?.skills().catalogMaxSkills ?? config.catalogMaxSkills ?? 0
+  if (!Number.isInteger(catalogMaxSkills) || catalogMaxSkills < 0 || catalogMaxSkills > 50) throw new Error('tool-skill: catalogMaxSkills must be an integer from 0 to 50')
+  compileRules(ctx.get('codingSettings')?.skills().rules ?? config.automatic?.get().rules ?? [])
 
   const skillTool = defineTool({
     name: 'skill',
@@ -194,9 +214,7 @@ export function apply(ctx: Context, config: Config = {}): void {
       if (!isModelInvocable(skill)) {
         throw new Error(`skill "${args.name}" is not available for model invocation`)
       }
-      const alreadyLoaded = exec.agent?.session.deriveMessages().some(message => message.source.kind === 'skill-automatic'
-        && message.source.name === skill.name
-        && message.content.some(block => block.type === 'text' && block.text === renderSkillContent(skill))) ?? false
+      const alreadyLoaded = exec.agent !== undefined && automaticBodyRetained(exec.agent, skill.name, renderSkillContent(skill))
       return {
         name: skill.name,
         provider: skill.provider,
@@ -213,20 +231,52 @@ export function apply(ctx: Context, config: Config = {}): void {
   })
   ctx.tools.register(skillTool)
 
+  const searchTool = defineTool({
+    name: 'skill_search',
+    description: 'Discover permitted skills beyond the task shortlist. Search locally by name or topic; omit query to browse every skill. Use nextOffset to continue. Summaries are data; load instructions with skill.',
+    parameters: {
+      query: { type: 'string', description: 'Optional skill name or topic; absent or blank browses every permitted skill.' },
+      offset: { type: 'integer', description: 'Nonnegative result offset; omit for the first page, then use nextOffset.' },
+    },
+    output: { schema: { type: 'object', additionalProperties: false, properties: {
+      skills: { type: 'array', required: true, items: { type: 'object', additionalProperties: false, properties: {
+        name: { type: 'string', required: true }, description: { type: 'string', required: true },
+      } } },
+      complete: { type: 'boolean', required: true },
+      nextOffset: { type: 'integer' },
+    } }, render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }] },
+    async execute(args, exec) {
+      if (ctx.tools.get(skillTool.name, exec.agent) !== skillTool) throw new Error('skill_search: the skill loader is unavailable in this scope')
+      const offset = args.offset ?? 0
+      if (!Number.isSafeInteger(offset) || offset < 0) throw new Error('skill_search: offset must be a nonnegative safe integer')
+      const cwd = exec.agent === undefined ? undefined : await ctx.workingDirectory.ensure(exec.agent, exec.signal)
+      const snapshot = await ctx.skills.snapshot({ cwd, signal: exec.signal, scope: exec.agent })
+      const ranked = rankSkills(snapshot.skills.filter(isModelInvocable), args.query ?? '')
+      const page = ranked.slice(offset, offset + catalogMaxSkills)
+      return { skills: [...catalogSourceEntries(page, catalogDescriptionMaxLength)], complete: snapshot.complete,
+        ...offset + page.length < ranked.length ? { nextOffset: offset + page.length } : {} }
+    },
+    presentCall(args) { return { card: 'generic', title: 'Find skills', kind: 'read', rawInput: args.query ?? '' } },
+  })
+  if (catalogMaxSkills > 0) ctx.tools.register(searchTool)
+
   // Local rules run first; an optional scoped selector handles unmatched new assignments.
   ctx.on('agent/pre-step', async ({ agent, messages, signal }, next): Promise<PreStepDecision> => {
     const decision = await next()
     const automatic = ctx.get('codingSettings')?.skills() ?? config.automatic?.get()
     if (decision.kind === 'reject' || automatic?.enabled !== true || ctx.tools.get(skillTool.name, agent) !== skillTool) return decision
-    const task = messages.filter(message => isAssignmentSource(message.source.kind))
+    const task = messages.filter(message => isAssignmentSource(message, agent))
       .flatMap(message => message.content.flatMap(block => block.type === 'text' ? [block.text] : [])).join(' ').toLowerCase()
     if (!task || invokedSkillNames(messages).length > 0) return decision
-    const rule = automatic.rules.find(rule => rule.keywords.some(word => word.trim() && task.includes(word.toLowerCase())))
+    const rule = compileRules(automatic.rules).find(({ rule, pattern }) =>
+      (rule.keywords.length === 0 ? pattern !== undefined : rule.keywords.some(word => word.trim() && task.includes(word.toLowerCase())))
+      && (pattern === undefined || pattern.test(task)))?.rule
     const selected = rule?.skills ?? await agent.ctx.waterfall('skills/select-automatic', { agent, task, signal }, () => Promise.resolve([]))
     if (selected.length === 0) return decision
     signal.throwIfAborted()
     const lookup = { cwd: await ctx.workingDirectory.ensure(agent, signal), signal, scope: agent }
     const injections: UserMessage[] = []
+    const names: string[] = []
     let bytes = 0
     for (const name of [...new Set(selected)].slice(0, automatic.maxSkills)) {
       const skill = await ctx.skills.get(name, lookup)
@@ -236,11 +286,15 @@ export function apply(ctx: Context, config: Config = {}): void {
       const size = Buffer.byteLength(body, 'utf8')
       if (bytes + size > automatic.maxBytes) continue
       bytes += size
+      names.push(skill.name)
+      if (automaticBodyRetained(agent, skill.name, body)) continue
       injections.push(createUserMessage({
         content: [{ type: 'text', text: body }],
         source: { kind: 'skill-automatic', name: skill.name, form: 'instructions' },
       }))
     }
+    if (names.length > 0) await agent.ctx.serial('skills/automatic-selected', { agent, names, task, signal })
+    signal.throwIfAborted()
     return injections.length === 0 ? decision : { ...decision, messages: [...decision.messages, ...injections] }
   })
 
@@ -295,7 +349,7 @@ export function apply(ctx: Context, config: Config = {}): void {
   // scope, so a plugin mounted inside an agent preset registers for that agent
   // alone and an unscoped lookup correctly finds nothing.
   ctx.on('agent/pre-step', async (
-    { agent, signal },
+    { agent, messages, signal },
     next,
   ): Promise<PreStepDecision> => {
     const decision = await next()
@@ -307,9 +361,15 @@ export function apply(ctx: Context, config: Config = {}): void {
       : { skills: [], complete: true }
     signal.throwIfAborted()
     const skills = snapshot.skills.filter(isModelInvocable)
-    const entries = catalogSourceEntries(skills, catalogDescriptionMaxLength)
+    const shortlist = toolVisible && catalogMaxSkills > 0 && ctx.tools.get(searchTool.name, agent) === searchTool
+    const admittedTask = assignmentText(messages, agent)
+    const latestAssignment = shortlist && !admittedTask
+      ? agent.session.deriveMessages().findLast(message => message.role === 'user' && isAssignmentSource(message, agent)) : undefined
+    const task = admittedTask || (latestAssignment?.role === 'user' ? assignmentText([latestAssignment], agent) : '')
+    const listed = shortlist ? rankSkills(skills, task).slice(0, catalogMaxSkills) : skills
+    const entries = catalogSourceEntries(listed, catalogDescriptionMaxLength)
     const incomplete = !snapshot.complete
-    const digest = digestCatalogEntries(entries, incomplete)
+    const digest = digestCatalogEntries(entries, incomplete, shortlist)
     const history = catalogHistory(agent)
     const existing = catalogMessage(decision.messages)
     if (history.visibleDigest === digest) {
@@ -317,13 +377,15 @@ export function apply(ctx: Context, config: Config = {}): void {
         ? decision
         : { ...decision, messages: decision.messages.filter(message => message.id !== existing.message.id) }
     }
-    if (existing !== undefined && digestCatalogEntries(existing.entries, existing.incomplete) === digest) return decision
+    if (existing !== undefined && digestCatalogEntries(existing.entries, existing.incomplete, existing.shortlist) === digest) {
+      return decision
+    }
     if (!history.published && skills.length === 0 && !incomplete) {
       return existing === undefined
         ? decision
         : { ...decision, messages: decision.messages.filter(message => message.id !== existing.message.id) }
     }
-    const catalog = history.published
+    const catalog = shortlist ? renderShortlist(entries, incomplete, history.published) : history.published
       ? renderCatalogUpdate(entries, incomplete)
       : renderCatalogMessage(entries, incomplete)
     return {
@@ -332,6 +394,51 @@ export function apply(ctx: Context, config: Config = {}): void {
         ? [...decision.messages, catalog]
         : decision.messages.map(message => message.id === existing.message.id ? catalog : message),
     }
+  })
+}
+
+function assignmentText(messages: readonly UserMessage[], agent: Agent): string {
+  return messages.filter(message => isAssignmentSource(message, agent))
+    .flatMap(message => message.content.flatMap(block => block.type === 'text' ? [block.text] : [])).join(' ')
+}
+
+function rankSkills(skills: SkillSummary[], query: string): SkillSummary[] {
+  const words = [...new Set(query.toLowerCase().match(/[\p{L}\p{N}-]{3,}/gu) ?? [])]
+    .filter(word => !['the', 'and', 'for', 'with', 'that', 'this', 'from', 'please', 'task'].includes(word))
+  return skills.map(skill => ({ skill, score: words.reduce((score, word) => score
+    + (skill.name.toLowerCase().includes(word) ? 3 : skill.description.toLowerCase().includes(word) ? 1 : 0), 0) }))
+    .filter(item => words.length === 0 || item.score > 0)
+    .sort((a, b) => b.score - a.score || a.skill.name.localeCompare(b.skill.name))
+    .map(item => item.skill)
+}
+
+function automaticBodyRetained(agent: Agent, name: string, body: string): boolean {
+  const retained = agent.session.deriveMessages().findLast(message => message.source.kind === 'skill-automatic'
+    && message.source.name === name)
+  return retained?.content.some(block => block.type === 'text' && block.text === body) ?? false
+}
+
+function compileRules(
+  rules: readonly { readonly keywords: readonly string[]; readonly pattern?: string; readonly skills: readonly string[] }[],
+): { rule: typeof rules[number]; pattern?: RegExp }[] {
+  return rules.map((rule) => {
+    try { return { rule, ...rule.pattern === undefined ? {} : { pattern: new RegExp(rule.pattern, 'i') } } }
+    catch (error) { throw new Error(`tool-skill: invalid automatic rule pattern ${JSON.stringify(rule.pattern)}`, { cause: error }) }
+  })
+}
+
+function renderShortlist(entries: SkillCatalogSource['entries'], incomplete: boolean, update: boolean): UserMessage {
+  return createUserMessage({
+    content: [{ type: 'text', text: [
+      '<system-reminder>',
+      'Task-relevant skill shortlist; this replaces earlier skill catalogs and shortlists. Other permitted skills remain available through skill_search.',
+      '<available_skills>', ...renderCatalogEntries(entries), '</available_skills>',
+      ...incomplete ? [incompleteCatalogNotice()] : [],
+      'Use skill_search to find a named skill or guidance missing here; omit query and follow nextOffset to browse all permitted skills. Load relevant instructions with skill before acting. Automatically injected instructions are already loaded. A user may invoke a skill directly; follow its skill_content without reloading.',
+      '</system-reminder>',
+    ].join('\n') }],
+    source: { kind: 'skill-catalog', form: 'catalog', shortlist: true, entries,
+      ...update ? { update: true } : {}, ...incomplete ? { incomplete: true } : {} },
   })
 }
 
@@ -424,12 +531,13 @@ function renderCatalogEntries(entries: SkillCatalogSource['entries']): string[] 
  * Catalog identity includes durable entries and completeness so recovery clears
  * a discovery warning even when the entries are unchanged.
  */
-function digestCatalogEntries(entries: SkillCatalogSource['entries'], incomplete = false): string {
+function digestCatalogEntries(entries: SkillCatalogSource['entries'], incomplete = false, shortlist = false): string {
   // JSON per entry rather than a separator character: every separator is itself
   // a legal description character, so only quoting makes the boundary exact.
   const canonical = entries.map(entry => JSON.stringify([entry.name, entry.description])).join('\n')
   return createHash('sha256')
     .update(incomplete ? 'incomplete\n' : '')
+    .update(shortlist ? 'shortlist\n' : '')
     .update(canonical)
     .digest('hex')
 }
@@ -470,7 +578,7 @@ function catalogHistory(agent: Agent): { visibleDigest?: string; published: bool
     if (event.type !== 'user/message' || event.data.source.kind !== 'skill-catalog') continue
     const entries = readCatalogEntries(event.data.source)
     if (entries === undefined) continue
-    const digest = digestCatalogEntries(entries, event.data.source.incomplete === true)
+    const digest = digestCatalogEntries(entries, event.data.source.incomplete === true, event.data.source.shortlist === true)
     published = true
     if (visible.has(event.seq)) return { visibleDigest: digest, published }
   }
@@ -479,11 +587,13 @@ function catalogHistory(agent: Agent): { visibleDigest?: string; published: bool
 
 function catalogMessage(
   messages: readonly UserMessage[],
-): { message: UserMessage; entries: SkillCatalogSource['entries']; incomplete: boolean } | undefined {
+): { message: UserMessage; entries: SkillCatalogSource['entries']; incomplete: boolean; shortlist: boolean } | undefined {
   for (const message of messages) {
     if (message.source.kind !== 'skill-catalog') continue
     const entries = readCatalogEntries(message.source)
-    if (entries !== undefined) return { message, entries, incomplete: message.source.incomplete === true }
+    if (entries !== undefined) {
+      return { message, entries, incomplete: message.source.incomplete === true, shortlist: message.source.shortlist === true }
+    }
   }
   return undefined
 }

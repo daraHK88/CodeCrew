@@ -376,11 +376,65 @@
       }
     },
     {
+      "name": "team_checkpoint",
+      "description": "Persist the supervisor project goal, constraints and next actions across interruption and compaction. Update only when those facts change; read the current checkpoint from team_dispatch_status.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "expected_revision": {
+            "type": "integer",
+            "description": "Current checkpoint revision; 0 before the first checkpoint."
+          },
+          "goal": {
+            "type": "string"
+          },
+          "constraints": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "next_actions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "expected_revision",
+          "goal",
+          "constraints",
+          "next_actions"
+        ]
+      }
+    },
+    {
       "name": "team_dispatch",
       "description": "Authorize a batch of complete coding assignments. Ready tasks start automatically within the concurrency limit; dependencies wait for supervisor acceptance. Use direct editing for small changes.",
       "parameters": {
         "type": "object",
         "properties": {
+          "goal": {
+            "type": "string",
+            "description": "Overall user goal; required for the first coding dispatch, saved without an extra checkpoint call."
+          },
+          "constraints": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "next_actions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "checkpoint_revision": {
+            "type": "integer",
+            "description": "Current checkpoint revision when replacing its goal; 0 initially."
+          },
           "assignments": {
             "type": "array",
             "items": {
@@ -471,7 +525,7 @@
           },
           "description": {
             "type": "string",
-            "description": "Complete task details and acceptance criteria."
+            "description": "Complete task details. For dispatched coding work, use nonempty Markdown sections: ## Objective, ## Inputs, ## Scope, ## Acceptance, ## Verification, ## Stop conditions."
           },
           "blocked_by": {
             "type": "array",
@@ -623,7 +677,7 @@
           },
           "description": {
             "type": "string",
-            "description": "Replacement details for edit."
+            "description": "Replacement details. Dispatched coding briefs require nonempty Markdown sections: ## Objective, ## Inputs, ## Scope, ## Acceptance, ## Verification, ## Stop conditions."
           },
           "blocked_by": {
             "type": "array",

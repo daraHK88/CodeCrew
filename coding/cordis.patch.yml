@@ -10,6 +10,7 @@
     forkProvider: fork
     coding:
       supervisorProfile: planner
+      uiProfile: implementer
       decisions:
         autoSelectSkills: true
         autoRouteWorkers: true
@@ -63,9 +64,11 @@
           enabled: true
           maxSkills: 1
           maxBytes: 12000
-          catalogDescriptionMaxLength: 180
+          catalogDescriptionMaxLength: 80
+          catalogMaxSkills: 4
           rules:
-            - keywords: [redesign, new website, landing page, build a dashboard]
+            - keywords: []
+              pattern: '^(?!\s*(?:change|update|rename|replace)\b)(?![\s\S]*\b(?:backend|api endpoint)\b)(?=[\s\S]*\b(?:build|create|implement|design|redesign)\b)(?=[\s\S]*\b(?:dashboard|website|frontend|web app|landing page|interface|mobile app|ios app|android app)\b)[\s\S]+$'
               skills: [design-distinctive-frontends]
             - keywords: [polish the ui, audit the ui, review the interface]
               skills: [impeccable]

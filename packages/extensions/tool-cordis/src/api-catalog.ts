@@ -367,6 +367,18 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     description: 'Agent Teams service backed by the exact live Lead Session log.',
     methods: [
       {
+        signature: 'getCheckpoint(agent: Agent): TeamCheckpoint | undefined',
+        description: 'Read the durable project goal and next actions owned by this coordinator.',
+        parameters: [{ name: 'agent', description: 'exact live Team member.' }],
+        returns: 'its checkpoint, or undefined before the first update.',
+      },
+      {
+        signature: 'updateCheckpoint(agent: Agent, request: UpdateTeamCheckpointRequest): Promise<TeamCheckpoint>',
+        description: 'Checkpoint the supervisor\'s goal independently of compacted model history.',
+        parameters: [{ name: 'agent', description: 'exact live Team Lead.' }, { name: 'request', description: 'current revision and complete replacement checkpoint.' }],
+        returns: 'the checkpoint after durable flush.',
+      },
+      {
         signature: 'queueTasks(agent: Agent, requests: readonly QueueTeamTaskRequest[]): Promise<readonly TeamDispatchSnapshot[]>',
         description: 'Persist supervisor-authorized assignments and dispatch ready tasks within the configured concurrency limit.',
         parameters: [{ name: 'agent', description: 'exact live Lead.' }, { name: 'requests', description: 'current task revisions and worker routes; dependencies may still be pending.' }],
@@ -5259,6 +5271,14 @@ export const EVENT_API: readonly EventApiEntry[] = [
     parameters: [{ name: 'ns', description: 'Profile entry id.' }, { name: 'revision', description: 'The entry\'s new revision.' }],
   },
   {
+    name: 'skills/automatic-selected',
+    mode: 'serial',
+    signature: '\'skills/automatic-selected\'(input: { agent: Agent; names: readonly string[]; task: string; signal: AbortSignal }): Promise<void>',
+    summary: 'Valid, permitted automatic choices whose complete instructions fit the configured budget.',
+    description: 'Valid, permitted automatic choices whose complete instructions fit the configured budget.',
+    parameters: [{ name: 'input', description: 'Exact agent, admitted assignment, chosen names and step cancellation; retained identical bodies remain selected.' }],
+  },
+  {
     name: 'skills/change',
     mode: 'emit',
     signature: '\'skills/change\'(): void',
@@ -9044,7 +9064,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'SkillPolicy',
-    declaration: 'export interface SkillPolicy {\n    readonly enabled: boolean;\n    readonly maxSkills: number;\n    readonly maxBytes: number;\n    readonly catalogDescriptionMaxLength: number;\n    readonly rules: readonly {\n        readonly keywords: readonly string[];\n        readonly skills: readonly string[];\n    }[];\n}',
+    declaration: 'export interface SkillPolicy {\n    readonly enabled: boolean;\n    readonly maxSkills: number;\n    readonly maxBytes: number;\n    readonly catalogDescriptionMaxLength: number;\n    readonly catalogMaxSkills: number;\n    readonly rules: readonly {\n        readonly keywords: readonly string[];\n        readonly pattern?: string;\n        readonly skills: readonly string[];\n    }[];\n}',
   },
   {
     name: 'SkillProvider',
@@ -9407,8 +9427,12 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type TableValueOf<S extends DomainSpec, N extends keyof S[\'tables\']> = S[\'tables\'][N] extends DomainTableSpec<string, infer V> ? V : never;',
   },
   {
+    name: 'TeamCheckpoint',
+    declaration: 'export interface TeamCheckpoint {\n    readonly revision: number;\n    readonly goal: string;\n    readonly constraints: string[];\n    readonly nextActions: string[];\n}',
+  },
+  {
     name: 'TeamDispatchSnapshot',
-    declaration: 'export interface TeamDispatchSnapshot {\n    readonly taskId: TeamTaskId;\n    readonly taskRevision: number;\n    readonly name: string;\n    readonly provider: string;\n    readonly agentOptions?: Partial<ModelSelection> & {\n        readonly maxTokens?: number;\n    };\n    readonly isolation: \'shared\' | \'worktree\';\n    readonly phase: \'queued\' | \'starting\' | \'running\' | \'review\' | \'blocked\' | \'cancelled\';\n    readonly checkout?: {\n        readonly path: string;\n        readonly branch: string;\n        readonly baseCommit: string;\n        readonly repositoryRoot: string;\n    };\n    readonly report?: TeamTaskReport;\n    readonly error?: string;\n}',
+    declaration: 'export interface TeamDispatchSnapshot {\n    readonly taskId: TeamTaskId;\n    readonly taskRevision: number;\n    readonly name: string;\n    readonly provider: string;\n    readonly agentOptions?: Partial<ModelSelection> & {\n        readonly maxTokens?: number;\n    };\n    readonly isolation: \'shared\' | \'worktree\';\n    readonly phase: \'queued\' | \'starting\' | \'running\' | \'waiting\' | \'review\' | \'blocked\' | \'cancelled\';\n    readonly checkout?: {\n        readonly path: string;\n        readonly branch: string;\n        readonly baseCommit: string;\n        readonly repositoryRoot: string;\n    };\n    readonly report?: TeamTaskReport;\n    readonly error?: string;\n}',
   },
   {
     name: 'TeamId',
@@ -9957,6 +9981,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'UpdateSharePermissionsRequest',
     declaration: 'export interface UpdateSharePermissionsRequest {\n    readonly shareId: string;\n    readonly sessionMode?: \'view\' | \'write\';\n    readonly allowsFork?: boolean;\n    readonly ttlMinutes?: number | null;\n}',
+  },
+  {
+    name: 'UpdateTeamCheckpointRequest',
+    declaration: 'export interface UpdateTeamCheckpointRequest {\n    readonly expectedRevision: number;\n    readonly goal: string;\n    readonly constraints: readonly string[];\n    readonly nextActions: readonly string[];\n}',
   },
   {
     name: 'UpdateTeamTaskRequest',

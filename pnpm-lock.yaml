@@ -8331,6 +8331,12 @@ importers:
       '@deepseek-ai/dsh-experimental-worktree':
         specifier: workspace:*
         version: link:../worktree
+      '@deepseek-ai/dsh-jobs':
+        specifier: workspace:*
+        version: link:../../jobs/jobs
+      '@deepseek-ai/dsh-jobs-local':
+        specifier: workspace:*
+        version: link:../../jobs/jobs-local
       '@deepseek-ai/dsh-llm':
         specifier: workspace:*
         version: link:../../llm/llm
@@ -8358,6 +8364,9 @@ importers:
       '@deepseek-ai/dsh-subagent-spawn-in-process':
         specifier: workspace:*
         version: link:../../subagent/subagent-spawn-in-process
+      '@deepseek-ai/dsh-tool-jobs':
+        specifier: workspace:*
+        version: link:../../jobs/tool-jobs
 
   packages/experimental/agent-team-profile:
     dependencies:

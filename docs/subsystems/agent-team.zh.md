@@ -120,6 +120,7 @@ interface TeamTaskView {
  * record; members and tasks then stay at the last valid state.
  */
 interface TeamProjection {
+  readonly checkpoint?: TeamCheckpoint
   readonly members: TeamMemberProjection[]
   readonly tasks: TeamTaskView[]
   readonly failure?: string
@@ -129,6 +130,20 @@ interface TeamProjection {
 ## 回放
 
 `agentTeam` Session 投影把一个 Root Session 回放成roster、任务板与历史 queued-minus-delivered mailbox。它按 `TeamId` 选取记录，因此普通 fork 继承的 event 保留 ancestor id，绝不会进入新 Root 的状态。Session event 的 `seq` 与 `time` 继续负责顺序和时间记录，Team snapshot 不再重复保存它们。roster 与 task 读取以 view 形式到达调用方，而 pending 邮件不对调用方公开。包 [README](../../packages/experimental/agent-team/README.zh.md)负责 operation、authorization、recovery 和限制行为。
+
+## 项目检查点
+
+Lead 通过修订检查保存有界项目目标和继续执行事实。任务与验证证据保留在任务板，最新用户请求优先。
+
+```ts type-equiv
+/** Goal and next actions owned by one project coordinator Session. */
+interface TeamCheckpoint {
+  readonly revision: number
+  readonly goal: string
+  readonly constraints: string[]
+  readonly nextActions: string[]
+}
+```
 
 <!-- BEGIN GENERATED cordis-surface (gen-cordis-catalog.ts) — do not edit between markers -->
 
@@ -145,6 +160,21 @@ Generated from source by `scripts/gen-cordis-catalog.ts` (verified fresh by `pnp
 Agent Teams service backed by the exact live Lead Session log.
 
 ```ts cordis-catalog
+/**
+ * Read the durable project goal and next actions owned by this coordinator.
+ * @param agent - exact live Team member.
+ * @returns its checkpoint, or undefined before the first update.
+ */
+getCheckpoint(agent: Agent): TeamCheckpoint | undefined
+
+/**
+ * Checkpoint the supervisor's goal independently of compacted model history.
+ * @param agent - exact live Team Lead.
+ * @param request - current revision and complete replacement checkpoint.
+ * @returns the checkpoint after durable flush.
+ */
+updateCheckpoint(agent: Agent, request: UpdateTeamCheckpointRequest): Promise<TeamCheckpoint>
+
 /**
  * Persist supervisor-authorized assignments and dispatch ready tasks within the configured concurrency limit.
  * @param agent - exact live Lead.

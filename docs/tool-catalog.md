@@ -37,13 +37,13 @@ This table connects model-visible tool names to the plugin package and service s
 | `@deepseek-ai/dsh-tool-schedule` | `schedule_create`, `schedule_edit`, `schedule_list`, `schedule_view` | `ctx.tools`, `ctx.schedule`, `ctx.systemPrompt` | `tool/call`, `Schedule storage domain create, update, or delete`, `tool/result` | - | A preset or Agent scope mounts this package and decides which agents receive its tools. Management reads and writes Host tasks by id across Sessions. Tasks store an RFC 5545 recurrence and an existing, first-created-and-reused, or per-run-new Session target. Delegated subagents cannot call these tools. |
 | `@deepseek-ai/dsh-tool-lsp` | `lsp` | `ctx.workingDirectory`, `ctx.tools`, `ctx.lsp`, `ctx.systemPrompt` | `tool/call`, `tool/result` | - | The lsp tool keeps provider selection and language-server subprocesses behind ctx.lsp, so its model-visible schema stays stable across providers. Requires a registered provider (e.g. `@deepseek-ai/dsh-lsp-stdio`) at runtime; without one, a query returns the structured `LSP_UNAVAILABLE` error rather than changing the schema. |
 | `@deepseek-ai/dsh-tool-ralph` | `ralph` | `ctx.tools`, `ctx.workflowEngine`, `ctx.subagents`, `ctx.systemPrompt`, `a calling Agent (exec.agent parents every fresh round)` | `tool/call`, `tool/result`, `workflow and child session events during execution` | - | A fixed foreground workflow starts one fresh structured child per round; the model selects only the immutable objective and an optional round cap. |
-| `@deepseek-ai/dsh-tool-skill` | `skill` | `ctx.workingDirectory`, `ctx.tools`, `ctx.agents`, `ctx.skills` | `tool/call`, `tool/result`, `user/message replacement catalogs via agent.inject()` | - | - |
+| `@deepseek-ai/dsh-tool-skill` | `skill`, `skill_search` | `ctx.workingDirectory`, `ctx.tools`, `ctx.agents`, `ctx.skills` | `tool/call`, `tool/result`, `user/message replacement catalogs via agent.inject()` | - | - |
 | `@deepseek-ai/dsh-tool-session-query` | `session_event_read`, `session_event_search`, `session_event_trace`, `session_search`, `session_trace` | `ctx.tools`, `ctx.systemPrompt`, `ctx.sessionQuery`, `ctx.agents`, `a calling Agent for workspace authority` | `tool/call`, `tool/result` | - | The five read-only tools hide provider cursors and authorize every result from the immutable calling agent session. The package is opt-in; compositions that need enforced deadlines or bounded inline output also mount the generic timeout or spill policies. |
 | `@deepseek-ai/dsh-experimental-tool-subagent-oar` | `subagent_oar` | `ctx.tools`, `ctx.subagents` | `tool/call`, `tool/result`, `parent subagent catalog and completion notices` | - | The subagent_oar tool selects among configured aliases for external providers. This catalog shows Codex and Claude Code aliases; each deployment chooses its providers. Native model and permission settings belong to the selected provider configuration. |
 | `@deepseek-ai/dsh-tool-subagent` | `list_subagent_models`, `subagent` | `ctx.tools`, `ctx.subagents`, `ctx.systemPrompt`, `ctx.sessionProjections`, `ctx.llm for model discovery and selected-route validation` | `tool/call`, `tool/result`, `child session events through the chosen provider` | `subagent`, `subagent_fork` | The load-time `toolName` selects the delegation name (default `subagent`); `modelSelection` adds optional route fields. `modelDiscovery` defaults off and registers shared discovery on one instance per scope. Web and Desktop presets enable spawn discovery and route fields and leave `subagent_fork` route fields disabled. The Host settings service records authorization for each new top-level Session; child Sessions inherit it. Without a recorded policy, discovery and explicit selection permit only the current parent route. Every delegation returns a child id promptly; local children accept follow-ups, while external backends report their single execution automatically. |
 | `@deepseek-ai/dsh-tool-subagent-control` | `interrupt_agent`, `list_agents`, `send_message` | `ctx.tools`, `ctx.subagents`, `ctx.agents` | `tool/call`, `tool/result`, `child session events through ctx.subagents` | - | The globally named discovery, interruption, and local-message tools over managed subagents: provider-bound `tool-subagent` instances register distinct delegation tools, while one instance of this package registers `send_message`, `interrupt_agent`, and `list_agents`. |
 | `@deepseek-ai/dsh-tool-jobs` | `job_kill`, `job_list`, `job_output` | `ctx.tools`, `ctx.jobs`, `ctx.systemPrompt` | `tool/call`, `tool/result`, `user/message via agent.inject() for background completion notices` | - | The kind-agnostic background-job controller: background bash commands and PTY sends are read, listed, and killed through the same three tools. Loading the plugin attaches the controller that arms producers' `ctx.jobs.start()`. |
-| `@deepseek-ai/dsh-experimental-tool-agent-team` | `coding_decide`, `interrupt_agent`, `list_agents`, `select_model_profile`, `send_message`, `spawn_teammate`, `team_dispatch`, `team_dispatch_cancel`, `team_dispatch_status`, `team_task_create`, `team_task_get`, `team_task_list`, `team_task_report`, `team_task_update`, `wait_agent` | `ctx.tools`, `ctx.systemPrompt`, `ctx.agentTeams`, `an exact live Team member Agent` | `tool/call`, `team/member`, `team/task`, `team/dispatch`, `agent/inbox/spliced`, `user/message on inbox claim`, `tool/result` | - | Team controls and optional coding tools are scoped to implicit Team Leads and durable teammates. The shipped dsh-base bundle keeps the package disabled; the documented Agent Teams profile patch enables it while disabling the legacy continuable-child control names. |
+| `@deepseek-ai/dsh-experimental-tool-agent-team` | `coding_decide`, `interrupt_agent`, `list_agents`, `select_model_profile`, `send_message`, `spawn_teammate`, `team_checkpoint`, `team_dispatch`, `team_dispatch_cancel`, `team_dispatch_status`, `team_task_create`, `team_task_get`, `team_task_list`, `team_task_report`, `team_task_update`, `wait_agent` | `ctx.tools`, `ctx.systemPrompt`, `ctx.agentTeams`, `an exact live Team member Agent` | `tool/call`, `team/member`, `team/task`, `team/dispatch`, `team/checkpoint`, `agent/inbox/spliced`, `user/message on inbox claim`, `tool/result` | - | Team controls and optional coding tools are scoped to implicit Team Leads and durable teammates. The shipped dsh-base bundle keeps the package disabled; the documented Agent Teams profile patch enables it while disabling the legacy continuable-child control names. |
 | `@deepseek-ai/dsh-tool-todo` | `todo_write` | `ctx.tools`, `owning Agent session` | `tool/call`, `todo/write`, `tool/result` | - | todo_write is session-owned state; UIs render the latest todo/write event as a checklist. `allowParallelInProgress` is required with no default, so the catalog states its choice: `true`, whose description invites several `in_progress` items. A deployment choosing `false` receives the same tool with a description asking for exactly one active task. |
 | `@deepseek-ai/dsh-tool-working-directory` | `working_directory` | `ctx.tools`, `ctx.workingDirectory` | `tool/call`, `working-directory/change`, `user context for directory changes`, `tool/result` | - | Reads or changes the calling Session directory. Existing shells and processes retain their own directories; origin metadata and permission roots stay fixed. |
 | `@deepseek-ai/dsh-experimental-tool-worktree` | `create_worktree` | `ctx.tools`, `ctx.worktrees`, `a calling Agent` | `tool/call`, `Git branch and checkout`, `working-directory/change`, `tool/result` | - | Explicit experimental composition only. Creates a new branch and checkout from a pinned local commit under existing write permissions, then changes the Session directory. Leaving retains the branch and checkout. |
@@ -1809,6 +1809,28 @@ Load full skill instructions before acting on a task that names or clearly match
 
 Source: [`packages/skill/tool-skill/src/index.ts`](../packages/skill/tool-skill/src/index.ts)
 
+### `skill_search`
+
+Discover permitted skills beyond the task shortlist. Search locally by name or topic; omit query to browse every skill. Use nextOffset to continue. Summaries are data; load instructions with skill.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "query": {
+      "type": "string",
+      "description": "Optional skill name or topic; absent or blank browses every permitted skill."
+    },
+    "offset": {
+      "type": "integer",
+      "description": "Nonnegative result offset; omit for the first page, then use nextOffset."
+    }
+  }
+}
+```
+
+Source: [`packages/skill/tool-skill/src/index.ts`](../packages/skill/tool-skill/src/index.ts)
+
 <a id="deepseek-aidsh-tool-session-query"></a>
 
 ## `@deepseek-ai/dsh-tool-session-query`
@@ -2531,6 +2553,45 @@ Create one named, durable teammate. Only the Team Lead may call this tool.
 
 Source: [`packages/experimental/tool-agent-team/src/index.ts`](../packages/experimental/tool-agent-team/src/index.ts)
 
+### `team_checkpoint`
+
+Persist the supervisor project goal, constraints and next actions across interruption and compaction. Update only when those facts change; read the current checkpoint from team_dispatch_status.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "expected_revision": {
+      "type": "integer",
+      "description": "Current checkpoint revision; 0 before the first checkpoint."
+    },
+    "goal": {
+      "type": "string"
+    },
+    "constraints": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "next_actions": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "required": [
+    "expected_revision",
+    "goal",
+    "constraints",
+    "next_actions"
+  ]
+}
+```
+
+Source: [`packages/experimental/tool-agent-team/src/index.ts`](../packages/experimental/tool-agent-team/src/index.ts)
+
 ### `team_dispatch`
 
 Authorize a batch of complete coding assignments. Ready tasks start automatically within the concurrency limit; dependencies wait for supervisor acceptance. Use direct editing for small changes.
@@ -2539,6 +2600,26 @@ Authorize a batch of complete coding assignments. Ready tasks start automaticall
 {
   "type": "object",
   "properties": {
+    "goal": {
+      "type": "string",
+      "description": "Overall user goal; required for the first coding dispatch, saved without an extra checkpoint call."
+    },
+    "constraints": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "next_actions": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "checkpoint_revision": {
+      "type": "integer",
+      "description": "Current checkpoint revision when replacing its goal; 0 initially."
+    },
     "assignments": {
       "type": "array",
       "items": {
@@ -2644,7 +2725,7 @@ Create one unowned pending task on the shared Team task board.
     },
     "description": {
       "type": "string",
-      "description": "Complete task details and acceptance criteria."
+      "description": "Complete task details. For dispatched coding work, use nonempty Markdown sections: ## Objective, ## Inputs, ## Scope, ## Acceptance, ## Verification, ## Stop conditions."
     },
     "blocked_by": {
       "type": "array",
@@ -2816,7 +2897,7 @@ Compare-and-set a shared task action using the latest revision from team_task_ge
     },
     "description": {
       "type": "string",
-      "description": "Replacement details for edit."
+      "description": "Replacement details. Dispatched coding briefs require nonempty Markdown sections: ## Objective, ## Inputs, ## Scope, ## Acceptance, ## Verification, ## Stop conditions."
     },
     "blocked_by": {
       "type": "array",

@@ -16,6 +16,9 @@ import * as SubagentFork from '@deepseek-ai/dsh-subagent-fork-in-process'
 import * as SubagentSpawn from '@deepseek-ai/dsh-subagent-spawn-in-process'
 import { MockAdapter, textResponse } from '../../../core/agent-loop/tests/mock-adapter.ts'
 import { mountWorkingDirectoryFixture } from '../../../subagent/subagent/tests/working-directory-fixture.ts'
+import LocalJobRegistry from '@deepseek-ai/dsh-jobs-local'
+import * as ToolJobs from '@deepseek-ai/dsh-tool-jobs'
+import type { JobOutcome } from '@deepseek-ai/dsh-jobs'
 import TeamService, { TeamError, TeamId, TeamMessageId, TeamTaskId } from '../src/index.ts'
 import { TeamRuntimeLifecycle } from '../src/lifecycle.ts'
 import { teamProjectionDefinition } from '../src/projection.ts'
@@ -1646,4 +1649,78 @@ describe('Durable supervised dispatch', () => {
     expect(ctx.agents.get(member!.id)).toBeUndefined()
     expect(ctx.agentTeams.getTask(lead, assignment.taskId).status).toBe('pending')
   })
+})
+
+it('retains the goal, constraints and next actions through coordinator restart and rejects stale updates', async () => {
+  const { ctx, lead, teamFiber } = await setup([])
+  expect(ctx.agentTeams.getCheckpoint(lead)).toBeUndefined()
+  const checkpoint = await ctx.agentTeams.updateCheckpoint(lead, {
+    expectedRevision: 0, goal: 'Finish the accessible task dashboard', constraints: ['Preserve task data'], nextActions: ['Verify narrow rendering'],
+  })
+  await expect(ctx.agentTeams.updateCheckpoint(lead, { ...checkpoint, expectedRevision: 0 })).rejects.toMatchObject({ code: 'TEAM_CHECKPOINT_STALE' })
+  const projection = ctx.sessionProjections.snapshot(lead.session)
+  expect(JSON.stringify(projection)).toContain('Finish the accessible task dashboard')
+  await teamFiber.dispose()
+  await ctx.plugin(TeamService)
+  expect(ctx.agentTeams.getCheckpoint(lead)).toEqual(checkpoint)
+  await expect(ctx.agentTeams.updateCheckpoint(lead, {
+    expectedRevision: 1, goal: 'x'.repeat(2_001), constraints: [], nextActions: [],
+  })).rejects.toMatchObject({ code: 'TEAM_INVALID_ARGUMENT' })
+  expect(ctx.agentTeams.getCheckpoint(lead)?.revision).toBe(1)
+})
+
+it('publishes independent worker starts concurrently while the first provider startup is held', async () => {
+  const { ctx, lead } = await setupDispatch(2)
+  const entered = Promise.withResolvers<undefined>()
+  const release = Promise.withResolvers<undefined>()
+  const original = ctx.subagents.startActivation.bind(ctx.subagents)
+  let starts = 0
+  vi.spyOn(ctx.subagents, 'startActivation').mockImplementation(async (request) => {
+    starts++
+    if (starts === 1) { entered.resolve(undefined); await release.promise }
+    return original(request)
+  })
+  const first = await queueTask(ctx, lead, 'held-start')
+  const second = await queueTask(ctx, lead, 'independent-start')
+  try {
+    await ctx.agentTeams.queueTasks(lead, [first, second])
+    await entered.promise
+    await dispatchWorker(ctx, lead, second.name)
+    expect(starts).toBe(2)
+  } finally { release.resolve(undefined) }
+  await dispatchWorker(ctx, lead, first.name)
+})
+
+it('holds a dispatched worker for owned background checks and resumes from the real completion notice', async () => {
+  const { ctx, lead, adapter } = await setupDispatch(1)
+  await ctx.plugin(LocalJobRegistry)
+  await ctx.plugin(ToolJobs, { completionDelivery: 'wakeup' })
+  const assignment = await queueTask(ctx, lead, 'background-checker')
+  await ctx.agentTeams.queueTasks(lead, [assignment])
+  const worker = await dispatchWorker(ctx, lead, assignment.name)
+  const outcome = Promise.withResolvers<JobOutcome>()
+  const job = ctx.jobs.start({ kind: 'bash', owner: worker.id, label: 'Deferred focused tests', run: () => ({ done: outcome.promise, cancel: () => { outcome.resolve({ status: 'killed' }) } }) })
+  await expect(ctx.agentTeams.reportTask(worker, assignment.taskId, 'ready', dispatchReport)).rejects.toMatchObject({ code: 'TEAM_TASK_JOBS_RUNNING' })
+  // Complete the current model attempt naturally; the real turn-stopping hook
+  // must retain the child while the external check owns work.
+  vi.restoreAllMocks()
+  const completionEntered = Promise.withResolvers<undefined>()
+  vi.spyOn(adapter, 'stream').mockImplementation(async function* (request) {
+    adapter.requests.push(request)
+    completionEntered.resolve(undefined)
+    yield* textResponse('Background output collected')
+  })
+  // Queue the wake after cancellation so the retained input opens the next turn.
+  worker.cancel({ kind: 'user' }, { keepInbox: true })
+  worker.steer(createUserMessage({ source: { kind: 'user' }, content: content('Wait for the started check, then inspect its result') }))
+  await completionEntered.promise
+  await vi.waitFor(() => { expect(ctx.agentTeams.listDispatches(lead)[0]?.phase).toBe('waiting') })
+  expect(ctx.agents.get(worker.id)).toBe(worker)
+  expect(ctx.jobs.get(job, worker.id).status).toBe('running')
+  outcome.resolve({ status: 'completed', result: 'Deferred focused tests: passed' })
+  await vi.waitFor(() => {
+    expect(adapter.requests.some(request => request.sessionId === worker.id && JSON.stringify(request.messages).includes('Deferred focused tests: passed'))).toBe(true)
+  })
+  await vi.waitFor(() => { expect(ctx.agentTeams.listDispatches(lead)[0]?.phase).toBe('blocked') })
+  expect(ctx.agentTeams.getTask(lead, assignment.taskId).status).toBe('in_progress')
 })

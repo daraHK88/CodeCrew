@@ -8,7 +8,9 @@ export interface SkillPolicy {
   readonly maxSkills: number
   readonly maxBytes: number
   readonly catalogDescriptionMaxLength: number
-  readonly rules: readonly { readonly keywords: readonly string[]; readonly skills: readonly string[] }[]
+  /** Zero publishes the full catalog; positive values bound a task-relevant shortlist with skill_search discovery. */
+  readonly catalogMaxSkills: number
+  readonly rules: readonly { readonly keywords: readonly string[]; readonly pattern?: string; readonly skills: readonly string[] }[]
 }
 /** Memory paths and total context budget. */
 export interface MemoryPolicy {
@@ -37,8 +39,11 @@ export class CodingSettings extends Service {
       enabled: z.boolean().default(true), maxSkills: z.number().step(1).min(1).max(4).default(1),
       maxBytes: z.number().step(1).min(1).max(65536).default(12000),
       catalogDescriptionMaxLength: z.number().step(1).min(3).max(500).default(180),
-      rules: z.array(z.object({ keywords: z.array(z.string()), skills: z.array(z.string()) })).default([]),
-    }).default({ enabled: true, maxSkills: 1, maxBytes: 12000, catalogDescriptionMaxLength: 180, rules: [] }).volatile(),
+      catalogMaxSkills: z.number().step(1).min(0).max(50).default(0),
+      rules: z.array(z.object({ keywords: z.array(z.string()).default([]), pattern: z.string(), skills: z.array(z.string()) })).default([]),
+    }).default({
+      enabled: true, maxSkills: 1, maxBytes: 12000, catalogDescriptionMaxLength: 180, catalogMaxSkills: 0, rules: [],
+    }).volatile(),
     memory: z.object({
       enabled: z.boolean().default(true), globalFile: z.string().default(''),
       workspaceFile: z.string().default('.dsh/BRIEF.md'), maxBytes: z.number().step(1).min(1024).max(65536).default(6000),

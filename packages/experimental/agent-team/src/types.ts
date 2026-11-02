@@ -86,6 +86,22 @@ export interface TeamTaskSnapshot {
   readonly verification?: string
 }
 
+/** Goal and next actions owned by one project coordinator Session. */
+export interface TeamCheckpoint {
+  readonly revision: number
+  readonly goal: string
+  readonly constraints: string[]
+  readonly nextActions: string[]
+}
+
+/** Compare-and-set update of the coordinator's retained project goal. */
+export interface UpdateTeamCheckpointRequest {
+  readonly expectedRevision: number
+  readonly goal: string
+  readonly constraints: readonly string[]
+  readonly nextActions: readonly string[]
+}
+
 /** Worker outcome awaiting supervisor acceptance; checks are reported evidence, not an independent guarantee. */
 export interface TeamTaskReport {
   readonly summary: string
@@ -102,7 +118,7 @@ export interface TeamDispatchSnapshot {
   readonly provider: string
   readonly agentOptions?: Partial<ModelSelection> & { readonly maxTokens?: number }
   readonly isolation: 'shared' | 'worktree'
-  readonly phase: 'queued' | 'starting' | 'running' | 'review' | 'blocked' | 'cancelled'
+  readonly phase: 'queued' | 'starting' | 'running' | 'waiting' | 'review' | 'blocked' | 'cancelled'
   readonly checkout?: { readonly path: string; readonly branch: string; readonly baseCommit: string; readonly repositoryRoot: string }
   readonly report?: TeamTaskReport
   readonly error?: string
@@ -150,6 +166,7 @@ export interface TeamMemberProjection {
  * record; members and tasks then stay at the last valid state.
  */
 export interface TeamProjection {
+  readonly checkpoint?: TeamCheckpoint
   readonly members: TeamMemberProjection[]
   readonly tasks: TeamTaskView[]
   readonly failure?: string
@@ -273,6 +290,8 @@ export interface TeamWaitResult {
 
 declare module '@deepseek-ai/dsh-session/types' {
   interface SessionEventMap {
+    /** Latest supervisor-owned project goal and next actions. */
+    'team/checkpoint': { version: 2; teamId: TeamId; checkpoint: TeamCheckpoint }
     /** Durable assignment authorization, execution status and reported result. */
     'team/dispatch': { version: 2; teamId: TeamId; dispatch: TeamDispatchSnapshot }
     /** Whole teammate lifecycle value, stored only in the Team Lead Session. */

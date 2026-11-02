@@ -519,7 +519,7 @@ const TOOL_PACKAGES: ToolPackage[] = [
         dshHome: resolve(root, '.tmp/tool-catalog/.dsh'),
         agentsHome: resolve(root, '.tmp/tool-catalog/.agents'),
       })
-      await ctx.plugin(ToolSkill)
+      await ctx.plugin(ToolSkill, { catalogMaxSkills: 4 })
     },
   },
   {
@@ -608,7 +608,7 @@ const TOOL_PACKAGES: ToolPackage[] = [
     dir: 'tool-agent-team',
     source: 'packages/experimental/tool-agent-team/src/index.ts',
     requires: ['ctx.tools', 'ctx.systemPrompt', 'ctx.agentTeams', 'an exact live Team member Agent'],
-    writes: ['tool/call', 'team/member', 'team/task', 'team/dispatch', 'agent/inbox/spliced', 'user/message on inbox claim', 'tool/result'],
+    writes: ['tool/call', 'team/member', 'team/task', 'team/dispatch', 'team/checkpoint', 'agent/inbox/spliced', 'user/message on inbox claim', 'tool/result'],
     async mount(ctx) {
       await ctx.plugin(AgentRegistry)
       await ctx.plugin(SessionStore)

@@ -4,8 +4,10 @@ import { Context, Service } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type {} from '@deepseek-ai/dsh-session-persistence'
+import type {} from '@deepseek-ai/dsh-jobs'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import { steerHostSubagentPrompt } from '@deepseek-ai/dsh-subagent/internal'
+import { TeamCoordinator } from './coordinator.ts'
 import { TeamDispatcher } from './dispatch.ts'
 import { TeamActivity } from './activity.ts'
 import { errorMessage, TeamError } from './error.ts'
@@ -18,6 +20,8 @@ import { TeamTaskBoard } from './task-board.ts'
 import { TeamId, TeamTaskId } from './types.ts'
 import type {
   Config,
+  TeamCheckpoint,
+  UpdateTeamCheckpointRequest,
   QueueTeamTaskRequest,
   TeamDispatchSnapshot,
   TeamTaskReport,
@@ -78,6 +82,7 @@ export class TeamService extends Service {
   private roster!: TeamRoster
   private tasks!: TeamTaskBoard
   private dispatcher!: TeamDispatcher
+  private coordinator!: TeamCoordinator
 
   constructor(ctx: Context, config: Config = {}) {
     super(ctx, 'agentTeams')
@@ -105,6 +110,7 @@ export class TeamService extends Service {
     })
     this.roster = new TeamRoster(ctx, this.journal, this.lifecycle, this.config.maxMembers)
     this.tasks = new TeamTaskBoard(this.journal, this.config.maxTasks)
+    this.coordinator = new TeamCoordinator(this.journal)
     this.dispatcher = new TeamDispatcher(ctx, this.journal, this.roster, this.lifecycle, this.config.maxConcurrentTasks)
     ctx.effect(() => () => this.disposeRuntime(), 'agentTeams.runtimeLifecycle()')
 
@@ -113,7 +119,41 @@ export class TeamService extends Service {
       const membership = this.roster.tryMembership(agent)
       if (membership !== undefined) { this.activity.notify(membership.id); this.dispatcher.schedule(membership.root) }
     })
+    ctx.on('agent/turn-stopping', ({ agent, signal }) => this.lifecycle.track(this.dispatcher.waitForJobs(agent, signal)))
+    ctx.inject(['jobs'], (jobCtx) => {
+      jobCtx.jobs.events.subscribe({ owners: 'all' }, (event) => {
+        if (event.type === 'output' || event.job.owner === undefined) return
+        const owner = ctx.agents.get(event.job.owner)
+        if (owner === undefined) return
+        const membership = this.roster.tryMembership(owner)
+        if (membership !== undefined) this.dispatcher.schedule(membership.root)
+      })
+    })
+    ctx.on('agent/disposed', ({ agent }) => {
+      const parent = agent.session.header.parentSession
+      const root = parent === undefined ? undefined : ctx.agents.get(parent)
+      if (root !== undefined && this.journal.state(root).members.some(member => member.id === agent.id)) this.dispatcher.schedule(root)
+    })
     for (const agent of ctx.agents.list()) this.scheduleRecovery(agent)
+  }
+
+  /**
+   * Read the durable project goal and next actions owned by this coordinator.
+   * @param agent - exact live Team member.
+   * @returns its checkpoint, or undefined before the first update.
+   */
+  getCheckpoint(agent: Agent): TeamCheckpoint | undefined {
+    return this.coordinator.get(this.roster.membership(agent))
+  }
+
+  /**
+   * Checkpoint the supervisor's goal independently of compacted model history.
+   * @param agent - exact live Team Lead.
+   * @param request - current revision and complete replacement checkpoint.
+   * @returns the checkpoint after durable flush.
+   */
+  updateCheckpoint(agent: Agent, request: UpdateTeamCheckpointRequest): Promise<TeamCheckpoint> {
+    return this.lifecycle.track(this.coordinator.update(this.roster.membership(agent), request))
   }
 
   /**

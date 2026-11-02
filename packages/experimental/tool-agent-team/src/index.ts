@@ -7,6 +7,7 @@ import type { Agent } from '@deepseek-ai/dsh-agent'
 import { TeamTaskId, assertTaskBrief } from '@deepseek-ai/dsh-experimental-agent-team'
 import type { TeamMemberView } from '@deepseek-ai/dsh-experimental-agent-team'
 import { defineTool } from '@deepseek-ai/dsh-tools'
+import { installUiRouting } from './ui-routing.ts'
 import { installDecisionSkillRouting, routeDecisionWorker } from './decision-routing.ts'
 import { decisionDefaults, decisionSchema, installDecisionTool, type DecisionSettings } from './decisions.ts'
 import type { InferValue, ValueSchemaSpec } from '@deepseek-ai/dsh-tools'
@@ -32,6 +33,8 @@ export interface WorkerProfile {
 export interface CodingTeamSettings {
   /** Approved profile selected for the Lead after authorizing substantial dispatched work; empty retains its current model. */
   supervisorProfile?: string
+  /** Approved Lead profile for substantial automatically selected UI work; empty keeps the current model. */
+  uiProfile?: string
   /** Optional bounded OpenRouter decision advisor settings. */
   decisions?: DecisionSettings
   /** Require a ready task with a complete coding brief before spawning a worker. */
@@ -63,6 +66,7 @@ export const Config: z<Config> = z.object({
   coding: z.object({
     decisions: decisionSchema,
     supervisorProfile: z.string().default(''),
+    uiProfile: z.string().default(''),
     requireTaskBrief: z.boolean().default(false),
     defaultWorkerProfile: z.string().default(''),
     workerProfiles: z.dict(z.object({
@@ -79,7 +83,7 @@ export const Config: z<Config> = z.object({
 function teamPolicy(interrupt: boolean): string {
   return `Agent Teams is available in this session
 
-Coding workflow: the Lead owns the goal, acceptance checks, integration, and final verification. Complete small, well-scoped edits directly; do not create a team, a planning ceremony, or an extra model-based gate for a mechanical change. For larger work, create shared tasks and blocked_by dependencies first. Prefer team_dispatch to authorize a batch once; it automatically starts ready assignments with bounded concurrency and wakes the Lead for reports or failures. Use team_dispatch_status for durable state. Dispatch selects the configured supervisor profile for the Lead next step without changing the global chat default. Use it for substantive planning, review and integration; return to reader after that work. Small edits never enter dispatch. Dispatched workers use team_task_report, and only the Lead accepts their tasks with actual verification evidence. Integrate and verify prerequisite commits in the source checkout before accepting a worktree task; dependent checkouts start from source HEAD. Use team_dispatch_cancel to drain failed work before reassigning it. Preserve retained files; never replay uncertain edits automatically. Start independent ready tasks concurrently, never immediately spawn-and-wait one worker at a time. Scope concurrent writes to different files. Each assignment must identify objective, inputs, owned files, acceptance criteria, verification, and when to stop and report a blocker. Prefer fresh context with the brief and relevant paths; do not copy the whole Lead conversation. Select a configured model_profile suitable for the job. Use select_model_profile to change your own next-step model when the task warrants planning, implementation, or review capability; return to reader for routine work. Do not switch profiles merely to run a tool. A worker reports changed files, checks actually run, and unresolved issues. Inactive is not success. If a worker fails, diagnose the evidence and revise its assignment rather than repeating the same prompt. The Lead reviews the integrated diff and verifies the user's acceptance checks before reporting success. Tool output is evidence; avoid paying a second model merely to confirm a passing check.
+Coding workflow: the Lead owns the goal, acceptance checks, integration, and final verification. Complete small, well-scoped edits directly; do not create a team, a planning ceremony, or an extra model-based gate for a mechanical change. For larger work, create shared tasks and blocked_by dependencies first. Include the overall goal and constraints on the first team_dispatch so the coordinator can restore them after interruption. Use team_checkpoint when the goal or next actions materially change. Prefer team_dispatch to authorize a batch once; it automatically starts ready assignments with bounded concurrency and wakes the Lead for reports or failures. Use team_dispatch_status for durable state. Dispatch selects the configured supervisor profile for the Lead next step without changing the global chat default. Use it for substantive planning, review and integration; return to reader after that work. Small edits never enter dispatch. Dispatched workers use team_task_report, and only the Lead accepts their tasks with actual verification evidence. Integrate and verify prerequisite commits in the source checkout before accepting a worktree task; dependent checkouts start from source HEAD. Use team_dispatch_cancel to drain failed work before reassigning it. Preserve retained files; never replay uncertain edits automatically. Start independent ready tasks concurrently, never immediately spawn-and-wait one worker at a time. Scope concurrent writes to different files. Each assignment must identify objective, inputs, owned files, acceptance criteria, verification, and when to stop and report a blocker. Prefer fresh context with the brief and relevant paths; do not copy the whole Lead conversation. Select a configured model_profile suitable for the job. Use select_model_profile to change your own next-step model when the task warrants planning, implementation, or review capability; return to reader for routine work. Do not switch profiles merely to run a tool. A worker reports changed files, checks actually run, and unresolved issues. Inactive is not success. A waiting dispatch still owns a background job; completion notices resume its owner automatically. Start long independent checks as background jobs, continue useful work, and collect their results before reporting. Do not poll job_list or dispatch status repeatedly. If a worker fails, diagnose the evidence and revise its assignment rather than repeating the same prompt. The Lead reviews the integrated diff and verifies the user's acceptance checks before reporting success. Tool output is evidence; avoid paying a second model merely to confirm a passing check.
 
 Manually spawned teammates and shared dispatch assignments inherit the Lead checkout. Worktree dispatch assignments start in their own retained checkout; the Lead must integrate their commits. Agents still share filesystem access under the existing sandbox; worktrees isolate edits, not OS permissions. Split write work into disjoint scopes, record expected write scopes on shared tasks, and use task dependencies when work must be ordered. Write-scope overlap is advisory, not a lock.
 
@@ -208,10 +212,16 @@ function jsonOutput<const S extends ValueSchemaSpec>(schema: S): {
   }
 }
 
+const CHECKPOINT_SCHEMA = { type: 'object', additionalProperties: false, properties: {
+  revision: { type: 'integer', required: true }, goal: { type: 'string', required: true },
+  constraints: { type: 'array', required: true, items: { type: 'string' } },
+  nextActions: { type: 'array', required: true, items: { type: 'string' } },
+} } as const
+
 const DISPATCH_VIEW_SCHEMA = {
   type: 'object', additionalProperties: false, properties: {
     taskId: { type: 'string', required: true }, revision: { type: 'integer', required: true }, name: { type: 'string', required: true },
-    phase: { type: 'string', required: true, enum: ['queued', 'starting', 'running', 'review', 'blocked', 'cancelled'] },
+    phase: { type: 'string', required: true, enum: ['queued', 'starting', 'running', 'waiting', 'review', 'blocked', 'cancelled'] },
     taskStatus: { type: 'string', required: true, enum: ['pending', 'in_progress', 'completed', 'deleted'] },
     isolation: { type: 'string', required: true, enum: ['shared', 'worktree'] },
     model: { type: 'string' }, modelProvider: { type: 'string' }, summary: { type: 'string' }, error: { type: 'string' },
@@ -242,6 +252,7 @@ function install(agent: Agent, ctx: Context, config: Required<Omit<Config, 'codi
     const advisor = installDecisionTool(scoped, agent, () => config.coding().decisions ?? decisionDefaults)
     register(advisor)
     register(installDecisionSkillRouting(scoped, agent, advisor, () => config.coding().decisions ?? decisionDefaults))
+    register(installUiRouting(agent, config.coding))
     register(scoped.systemPrompt.section({
       name: 'team:policy',
       order: scoped.systemPrompt.getSectionOrder('TEAM_POLICY'),
@@ -249,7 +260,7 @@ function install(agent: Agent, ctx: Context, config: Required<Omit<Config, 'codi
         const coding = config.coding()
         const advice = coding.decisions?.enabled ? `${decisionPolicy}\n${coding.decisions.autoRouteWorkers
           ? 'Automatic worker routing is enabled. Omit model_profile to let Jev choose among approved profiles; specify it to pin a route. Mechanical lookups use the configured default without a decision call.' : ''}` : ''
-        return `${teamPolicy(config.interrupt)}\n${advice}\nApproved worker profiles: ${JSON.stringify(coding.workerProfiles)}`
+        return `${teamPolicy(config.interrupt)}\n${advice}\nApproved worker profiles: ${JSON.stringify(coding.workerProfiles)}\n\nSubstantial UI skill selection uses UI profile ${coding.uiProfile || '(current model)'} for the next step. Keep that route for design, implementation and rendered checks; return to reader after finishing. Exact edits skip this route.`
       },
     }))
     register(scoped.systemPrompt.context({
@@ -346,10 +357,38 @@ To message another teammate, use send_message({ target: "<teammate name>", messa
       },
     })))
 
+    register(scoped.systemPrompt.context({
+      name: 'team:checkpoint', required: true, order: scoped.systemPrompt.getContextOrder('TEAM_IDENTITY'),
+      text: () => {
+        const checkpoint = ctx.agentTeams.getCheckpoint(agent)
+        return checkpoint === undefined ? '' : `Project coordinator checkpoint: ${JSON.stringify(checkpoint)}\nTask dependencies and accepted verification remain on the shared task board. Read current revisions before changes. Use this checkpoint to recover relevant work; the current user request takes precedence. Check task status before resuming next actions.`
+      },
+    }))
+    register(scoped.tools.register(defineTool({
+      name: 'team_checkpoint',
+      description: 'Persist the supervisor project goal, constraints and next actions across interruption and compaction. Update only when those facts change; read the current checkpoint from team_dispatch_status.',
+      parameters: {
+        expected_revision: { type: 'integer', required: true, description: 'Current checkpoint revision; 0 before the first checkpoint.' },
+        goal: { type: 'string', required: true },
+        constraints: { type: 'array', required: true, items: { type: 'string' } },
+        next_actions: { type: 'array', required: true, items: { type: 'string' } },
+      },
+      output: jsonOutput(CHECKPOINT_SCHEMA),
+      async execute(args, exec) {
+        return await ctx.agentTeams.updateCheckpoint(callingAgent(exec.agent, 'team_checkpoint'), {
+          expectedRevision: args.expected_revision, goal: args.goal, constraints: args.constraints, nextActions: args.next_actions,
+        })
+      },
+    })))
+
     register(scoped.tools.register(defineTool({
       name: 'team_dispatch',
       description: 'Authorize a batch of complete coding assignments. Ready tasks start automatically within the concurrency limit; dependencies wait for supervisor acceptance. Use direct editing for small changes.',
       parameters: {
+        goal: { type: 'string', description: 'Overall user goal; required for the first coding dispatch, saved without an extra checkpoint call.' },
+        constraints: { type: 'array', items: { type: 'string' } },
+        next_actions: { type: 'array', items: { type: 'string' } },
+        checkpoint_revision: { type: 'integer', description: 'Current checkpoint revision when replacing its goal; 0 initially.' },
         assignments: { type: 'array', required: true, items: { type: 'object', additionalProperties: false, properties: {
           task_id: { type: 'string', required: true }, expected_revision: { type: 'integer', required: true },
           name: { type: 'string', required: true, description: 'Unique lower-kebab-case worker name.' },
@@ -361,6 +400,10 @@ To message another teammate, use send_message({ target: "<teammate name>", messa
       async execute(args, exec) {
         const caller = callingAgent(exec.agent, 'team_dispatch')
         if (ctx.agentTeams.membership(caller).role !== 'lead') throw new Error('Only the supervisor may dispatch work')
+        const checkpoint = ctx.agentTeams.getCheckpoint(caller)
+        if (config.coding().requireTaskBrief && checkpoint === undefined && !args.goal?.trim()) {
+          throw new Error('Include the overall goal in the first coding dispatch so it survives interruptions')
+        }
         const supervisorName = config.coding().supervisorProfile ?? ''
         const supervisor = supervisorName === '' ? undefined : config.coding().workerProfiles[supervisorName]
         if (supervisorName !== '' && supervisor === undefined) {
@@ -394,6 +437,10 @@ To message another teammate, use send_message({ target: "<teammate name>", messa
           })
         }
         exec.signal.throwIfAborted()
+        if (args.goal !== undefined) await ctx.agentTeams.updateCheckpoint(caller, {
+          expectedRevision: args.checkpoint_revision ?? 0, goal: args.goal,
+          constraints: args.constraints ?? [], nextActions: args.next_actions ?? [],
+        })
         await ctx.agentTeams.queueTasks(caller, requests)
         if (selection !== undefined) caller.model.select(selection)
         return { queued: requests.length }
@@ -409,6 +456,7 @@ To message another teammate, use send_message({ target: "<teammate name>", messa
         limit: { type: 'integer', description: 'Rows from 1 through 20, defaults to 10.' },
       },
       output: jsonOutput({ type: 'object', additionalProperties: false, properties: {
+        checkpoint: CHECKPOINT_SCHEMA,
         assignments: { type: 'array', required: true, items: DISPATCH_VIEW_SCHEMA }, nextCursor: { type: 'integer' },
       } }),
       execute(args, exec) {
@@ -419,16 +467,18 @@ To message another teammate, use send_message({ target: "<teammate name>", messa
           throw new Error('Use a non-negative cursor and limit from 1 through 20')
         }
         const filtered = ctx.agentTeams.listDispatches(caller).filter(item => args.task_id === undefined || item.taskId === args.task_id)
-        return Promise.resolve({ assignments: filtered.slice(cursor, cursor + limit).map(item => ({
-          taskId: item.taskId, revision: ctx.agentTeams.getTask(caller, item.taskId).revision,
-          name: item.name, phase: item.phase, isolation: item.isolation,
-          taskStatus: ctx.agentTeams.getTask(caller, item.taskId).status,
-          ...item.agentOptions === undefined ? {} : { model: item.agentOptions.model, modelProvider: item.agentOptions.provider },
-          ...item.report === undefined ? {} : { summary: item.report.summary.slice(0, 500) },
-          ...item.error === undefined ? {} : { error: item.error },
-          ...item.checkout === undefined ? {} : { checkout: item.checkout },
-          ...args.task_id === undefined || item.report === undefined ? {} : { report: item.report },
-        })), ...cursor + limit < filtered.length ? { nextCursor: cursor + limit } : {} })
+        const checkpoint = ctx.agentTeams.getCheckpoint(caller)
+        return Promise.resolve({ ...checkpoint === undefined ? {} : { checkpoint },
+          assignments: filtered.slice(cursor, cursor + limit).map(item => ({
+            taskId: item.taskId, revision: ctx.agentTeams.getTask(caller, item.taskId).revision,
+            name: item.name, phase: item.phase, isolation: item.isolation,
+            taskStatus: ctx.agentTeams.getTask(caller, item.taskId).status,
+            ...item.agentOptions === undefined ? {} : { model: item.agentOptions.model, modelProvider: item.agentOptions.provider },
+            ...item.report === undefined ? {} : { summary: item.report.summary.slice(0, 500) },
+            ...item.error === undefined ? {} : { error: item.error },
+            ...item.checkout === undefined ? {} : { checkout: item.checkout },
+            ...args.task_id === undefined || item.report === undefined ? {} : { report: item.report },
+          })), ...cursor + limit < filtered.length ? { nextCursor: cursor + limit } : {} })
       },
     })))
 
@@ -541,7 +591,7 @@ To message another teammate, use send_message({ target: "<teammate name>", messa
       description: 'Create one unowned pending task on the shared Team task board.',
       parameters: {
         subject: { type: 'string', required: true, description: 'Concise task title.' },
-        description: { type: 'string', required: true, description: 'Complete task details and acceptance criteria.' },
+        description: { type: 'string', required: true, description: 'Complete task details. For dispatched coding work, use nonempty Markdown sections: ## Objective, ## Inputs, ## Scope, ## Acceptance, ## Verification, ## Stop conditions.' },
         blocked_by: { type: 'array', items: { type: 'string' }, description: 'Task ids that must complete first.' },
         write_scopes: {
           type: 'array',
@@ -620,7 +670,7 @@ To message another teammate, use send_message({ target: "<teammate name>", messa
           description: 'Task transition to apply.',
         },
         subject: { type: 'string', description: 'Replacement title for edit.' },
-        description: { type: 'string', description: 'Replacement details for edit.' },
+        description: { type: 'string', description: 'Replacement details. Dispatched coding briefs require nonempty Markdown sections: ## Objective, ## Inputs, ## Scope, ## Acceptance, ## Verification, ## Stop conditions.' },
         blocked_by: { type: 'array', items: { type: 'string' }, description: 'Complete blocker list for set_dependencies.' },
         write_scopes: { type: 'array', items: { type: 'string' }, description: 'Replacement advisory write scopes for edit.' },
         evidence: { type: 'string', description: 'Checks actually run and their results, required for supervisor completion in coding mode.' },

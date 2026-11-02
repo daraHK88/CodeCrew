@@ -314,6 +314,11 @@
     },
     {
       "doc": "docs/subsystems/agent-team.md",
+      "symbol": "TeamCheckpoint",
+      "source": "packages/experimental/agent-team/src/types.ts"
+    },
+    {
+      "doc": "docs/subsystems/agent-team.md",
       "symbol": "TeamProjection",
       "source": "packages/experimental/agent-team/src/types.ts"
     },

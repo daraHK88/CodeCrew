@@ -36,10 +36,10 @@
   en: 445806c13f887a09
   zh: 8b2b67044abfd65a
 /deepseek-ai-dsh-experimental-tool-agent-team/understand-the-implementation/source-map:
-  en: bf905670dc6faf63
+  en: 7ed8c3eb6720efdb
   zh: 10f9ea0eab26c094
 /deepseek-ai-dsh-experimental-tool-agent-team/understand-the-implementation/policy-and-tools:
-  en: 444fafddec445d2b
+  en: b8e8ff5231581993
   zh: cfae4748282dbf83
 /deepseek-ai-dsh-experimental-tool-agent-team/understand-the-implementation/scoped-registration-and-teardown:
   en: c2b29f27a74c02c0
@@ -51,8 +51,11 @@
   en: 93f6893d0c1228b2
   zh: 66b51a7a0b865e16
 /deepseek-ai-dsh-experimental-tool-agent-team/coding-policy/automatic-routing-and-bounded-evidence:
-  en: 7fd43747154c4cfc
-  zh: c8d7fd8598cd1d35
+  en: fc04841fe80248f2
+  zh: 0edf1bd5d79d3c67
+/deepseek-ai-dsh-experimental-tool-agent-team/coordinator-and-routing:
+  en: 5e2665f21fe0e67a
+  zh: b88f2a10d983fd2a
 /deepseek-ai-dsh-experimental-tool-agent-team/model-experience:
   en: 215e7ba838619b7b
   zh: a311da3843709f90
@@ -60,7 +63,7 @@
   en: 8e1e365ff3b0dfb2
   zh: c6c91fbf1e1df934
 /deepseek-ai-dsh-experimental-tool-agent-team/model-experience/team-policy-and-tools/what-the-model-sees:
-  en: 9a17b9beb45d9c25
+  en: 1d512f971f619a21
   zh: 225a5e5f5b8d07d4
 /deepseek-ai-dsh-experimental-tool-agent-team/model-experience/team-policy-and-tools/token-effect:
   en: 3f49674f937a8ca3

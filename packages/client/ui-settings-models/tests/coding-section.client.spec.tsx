@@ -56,3 +56,9 @@ it('reports rejected supervisor saves', async () => {
   fireEvent.change(screen.getByLabelText<HTMLSelectElement>(codingEn.supervisor), { target: { value: '' } })
   await waitFor(() => { expect(screen.getByText(codingEn.failed)).toBeTruthy() })
 })
+
+it('saves the UI role independently of the supervisor and chat model', async () => {
+  const save = mount()
+  fireEvent.change(screen.getByLabelText(codingEn.uiProfile), { target: { value: 'planner' } })
+  await waitFor(() => { expect(save).toHaveBeenCalledExactlyOnceWith('team', ['coding', 'uiProfile'], 'planner') })
+})

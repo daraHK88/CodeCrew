@@ -4,6 +4,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import type {} from '@deepseek-ai/dsh-experimental-worktree'
+import type {} from '@deepseek-ai/dsh-jobs'
 import type { TeamJournal } from './journal.ts'
 import type { TeamRoster } from './roster.ts'
 import type { TeamRuntimeLifecycle } from './lifecycle.ts'
@@ -23,7 +24,7 @@ export function assertTaskBrief(description: string): void {
     return [heading.trim().toLowerCase(), body.join('\n').trim()]
   }))
   for (const heading of ['Objective', 'Inputs', 'Scope', 'Acceptance', 'Verification', 'Stop conditions']) {
-    if (!sections.get(heading.toLowerCase())) throw new TeamError(`Task brief requires a ${heading} section with actionable content`, 'TEAM_INVALID_ARGUMENT')
+    if (!sections.get(heading.toLowerCase())) throw new TeamError(`Task brief requires a complete ${heading} section with actionable content. Use six nonempty Markdown sections: ## Objective, ## Inputs, ## Scope, ## Acceptance, ## Verification, ## Stop conditions. Inline labels are not sections.`, 'TEAM_INVALID_ARGUMENT')
   }
 }
 
@@ -110,9 +111,10 @@ export class TeamDispatcher {
       const assignment = state.dispatches.find(item => item.taskId === taskId)
       const task = state.tasks.find(item => item.id === taskId)
       if (role !== 'teammate' || assignment?.name !== name || task?.ownerId !== caller.id
-        || !['starting', 'running'].includes(assignment.phase)) throw new TeamError('Only the current assigned worker can report an active assignment', 'TEAM_TASK_UNAUTHORIZED')
+        || !['starting', 'running', 'waiting'].includes(assignment.phase)) throw new TeamError('Only the current assigned worker can report an active assignment', 'TEAM_TASK_UNAUTHORIZED')
       requiredText(report.summary, 'summary', 4_000)
       requiredText(report.risks, 'risks', 4_000)
+      if (outcome === 'ready' && this.hasJobs(caller)) throw new TeamError('Finish owned background checks before reporting ready', 'TEAM_TASK_JOBS_RUNNING')
       if (outcome === 'ready' && report.checks.length === 0) throw new TeamError('A ready report requires checks actually run', 'TEAM_INVALID_ARGUMENT')
       for (const path of report.changedFiles) requiredText(path, 'changed file', 1_000)
       for (const check of report.checks) requiredText(check, 'check result', 2_000)
@@ -121,6 +123,52 @@ export class TeamDispatcher {
     })
     this.notify(root, `${taskId}: ${outcome === 'ready' ? 'awaiting supervisor review and integration' : 'blocked; inspect before retrying'}. Read team_dispatch_status with task_id for the current revision and full report; verify the actual diff and checks. The task remains incomplete.`)
     this.schedule(root)
+  }
+
+  /**
+   * Keep a dispatched worker resident while its owned background checks finish.
+   * The existing job controller delivers the completion; this wait never consumes output or polls.
+   * @param agent - exact worker whose otherwise completed turn is stopping.
+   * @param turnSignal - cancellation of that turn.
+   */
+  async waitForJobs(agent: Agent, turnSignal: AbortSignal): Promise<void> {
+    const membership = this.roster.tryMembership(agent)
+    if (membership?.role !== 'teammate' || !this.hasJobs(agent)) return
+    const root = membership.root
+    const assignment = this.journal.state(root).dispatches.find(item => item.name === membership.name)
+    if (assignment === undefined || !['starting', 'running', 'waiting'].includes(assignment.phase)) return
+    const jobs = this.ctx.get('jobs')
+    if (jobs === undefined) return
+    const signal = AbortSignal.any([turnSignal, this.lifecycle.signal])
+    await this.journal.transact(root.id, async () => {
+      const current = this.journal.state(root).dispatches.find(item => item.taskId === assignment.taskId)
+      if (current !== undefined && (current.phase === 'running' || current.phase === 'starting')) {
+        await this.save(root, { ...current, phase: 'waiting' })
+      }
+    })
+    let stop = (): void => undefined
+    let onAbort = (): void => undefined
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const inspect = (): void => { if (!this.hasJobs(agent)) resolve() }
+        stop = jobs.events.subscribe({ owner: agent.id }, (event) => {
+          if (event.type !== 'output') inspect()
+        })
+        onAbort = () => { reject(new TeamError('Background check wait cancelled', 'TEAM_DISPOSED', { cause: signal.reason })) }
+        signal.addEventListener('abort', onAbort, { once: true })
+        if (signal.aborted) onAbort()
+        else inspect()
+      })
+    } finally {
+      signal.removeEventListener('abort', onAbort)
+      stop()
+    }
+  }
+
+  /** Whether this exact worker still owns a running or stopping job. */
+  private hasJobs(agent: Agent): boolean {
+    return this.ctx.get('jobs')?.list(agent.id).some(job => job.owner === agent.id
+      && (job.status === 'running' || job.status === 'stopping')) ?? false
   }
 
   /**
@@ -172,12 +220,27 @@ export class TeamDispatcher {
 
   /** Reconcile disappeared or inactive workers without treating inactivity as success. */
   private async tick(root: Agent): Promise<void> {
-    const state = this.journal.state(root)
+    // Wait for the complete authorization transaction, not its first flushed row.
+    const state = await this.journal.transact(root.id, () => Promise.resolve(this.journal.state(root)))
     for (const item of state.dispatches) {
       const task = state.tasks.find(task => task.id === item.taskId)
       if (task?.status === 'completed' || task?.status === 'deleted') continue
       const member = this.roster.list(this.roster.membership(root)).find(member => member.name === item.name)
-      if (item.phase === 'starting' || (item.phase === 'running' && member?.status !== 'running')) {
+      const worker = member === undefined ? undefined : this.ctx.agents.get(member.id)
+      const liveJobs = member !== undefined && (this.ctx.get('jobs')?.list(member.id).some(job =>
+        job.owner === member.id && (job.status === 'running' || job.status === 'stopping')) ?? false)
+      const pendingInput = worker !== undefined && (worker.inbox.nextStep.length > 0 || worker.inbox.nextTurn.length > 0)
+      const waiting = (item.phase === 'running' || item.phase === 'waiting') && member?.status !== 'running' && liveJobs
+      const resumed = item.phase === 'waiting' && member?.status === 'running' && !liveJobs
+      if ((waiting && item.phase !== 'waiting') || resumed) {
+        await this.journal.transact(root.id, async () => {
+          const current = this.journal.state(root).dispatches.find(next => next.taskId === item.taskId)
+          if (current === item) await this.save(root, { ...item, phase: waiting ? 'waiting' : 'running' })
+        })
+        continue
+      }
+      if (waiting || (pendingInput && item.phase !== 'starting')) continue
+      if (item.phase === 'starting' || ((item.phase === 'running' || item.phase === 'waiting') && member?.status !== 'running')) {
         await this.journal.transact(root.id, async () => {
           const current = this.journal.state(root).dispatches.find(next => next.taskId === item.taskId)
           if (current !== item) return
@@ -189,9 +252,10 @@ export class TeamDispatcher {
     let occupied = this.journal.state(root).dispatches.filter((item) => {
       const task = this.journal.state(root).tasks.find(task => task.id === item.taskId)
       const member = this.roster.list(this.roster.membership(root)).find(member => member.name === item.name)
-      return item.phase === 'starting' || item.phase === 'running' || member?.status === 'running'
+      return item.phase === 'starting' || item.phase === 'running' || item.phase === 'waiting' || member?.status === 'running'
         || (item.phase === 'blocked' && task?.status === 'in_progress')
     }).length
+    const ready: { assignment: TeamDispatchSnapshot; brief: string; scopes: readonly string[] }[] = []
     for (const assignment of this.journal.state(root).dispatches) {
       if (occupied >= this.concurrency || this.lifecycle.disposed) break
       if (assignment.phase !== 'queued') continue
@@ -203,10 +267,16 @@ export class TeamDispatcher {
         continue
       }
       const view = projectTaskView(this.journal.state(root), task)
-      if (!view.ready || (assignment.isolation === 'shared' && view.writeScopeWarnings.length > 0)) continue
+      if (!view.ready || (assignment.isolation === 'shared' && (view.writeScopeWarnings.length > 0
+        || ready.some(item => item.assignment.isolation === 'shared' && item.scopes.some(left => task.writeScopes.some(right =>
+          left === right || left.startsWith(`${right}/`) || right.startsWith(`${left}/`))))))) continue
       occupied++
-      await this.start(root, assignment, task.description)
+      ready.push({ assignment, brief: task.description, scopes: task.writeScopes })
     }
+    const outcomes = await Promise.allSettled(ready.map(item => this.start(root, item.assignment, item.brief)))
+    const failures: unknown[] = []
+    for (const outcome of outcomes) if (outcome.status === 'rejected') failures.push(outcome.reason)
+    if (failures.length > 0) throw new AggregateError(failures, 'Ready assignment startup failed')
   }
 
   /** Reserve a slot before preparing the checkout or publishing a child. */

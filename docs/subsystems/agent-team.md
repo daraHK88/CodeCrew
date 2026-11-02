@@ -77,7 +77,7 @@ interface TeamTaskSnapshot {
 
 <a id="web-projection"></a>
 
-`QueueTeamTaskRequest` authorizes a task revision, a unique worker name, an approved provider/model route and shared or worktree isolation. `TeamDispatchSnapshot` persists that authorization with queued, starting, running, review, blocked or cancelled phase, optional retained checkout and `TeamTaskReport`. Reports contain summary, changed files, checks and risks. Dispatch is optional and Lead-authorized; dependency completion still requires supervisor verification. See the [package reference](../../packages/experimental/agent-team/README.md#coding-policy) for scheduling, cancellation and recovery.
+`QueueTeamTaskRequest` authorizes a task revision, a unique worker name, an approved provider/model route and shared or worktree isolation. `TeamDispatchSnapshot` persists that authorization with queued, starting, running, waiting, review, blocked or cancelled phase, optional retained checkout and `TeamTaskReport`. Reports contain summary, changed files, checks and risks. Dispatch is optional and Lead-authorized; dependency completion still requires supervisor verification. See the [package reference](../../packages/experimental/agent-team/README.md#coding-policy) for scheduling, cancellation and recovery.
 
 ## Web projection
 
@@ -120,6 +120,7 @@ interface TeamTaskView {
  * record; members and tasks then stay at the last valid state.
  */
 interface TeamProjection {
+  readonly checkpoint?: TeamCheckpoint
   readonly members: TeamMemberProjection[]
   readonly tasks: TeamTaskView[]
   readonly failure?: string
@@ -129,6 +130,20 @@ interface TeamProjection {
 ## Replay
 
 The `agentTeam` Session projection replays one root Session into the roster, task board, and historical queued-minus-delivered mailbox. It selects records by `TeamId`, so events inherited by an ordinary fork retain the ancestor id and never enter the new root's state. Session event `seq` and `time` remain the ordering and timing record; Team snapshots do not duplicate them. Roster and task reads reach callers as views; pending mail is not exposed to callers. The package [README](../../packages/experimental/agent-team/README.md) owns operation, authorization, recovery, and limit behavior.
+
+## Project checkpoint
+
+The Lead stores a bounded project goal and continuation facts with revision checks. Tasks and verification stay on the task board; the latest user request takes precedence.
+
+```ts type-equiv
+/** Goal and next actions owned by one project coordinator Session. */
+interface TeamCheckpoint {
+  readonly revision: number
+  readonly goal: string
+  readonly constraints: string[]
+  readonly nextActions: string[]
+}
+```
 
 <!-- BEGIN GENERATED cordis-surface (gen-cordis-catalog.ts) — do not edit between markers -->
 
@@ -145,6 +160,21 @@ Generated from source by `scripts/gen-cordis-catalog.ts` (verified fresh by `pnp
 Agent Teams service backed by the exact live Lead Session log.
 
 ```ts cordis-catalog
+/**
+ * Read the durable project goal and next actions owned by this coordinator.
+ * @param agent - exact live Team member.
+ * @returns its checkpoint, or undefined before the first update.
+ */
+getCheckpoint(agent: Agent): TeamCheckpoint | undefined
+
+/**
+ * Checkpoint the supervisor's goal independently of compacted model history.
+ * @param agent - exact live Team Lead.
+ * @param request - current revision and complete replacement checkpoint.
+ * @returns the checkpoint after durable flush.
+ */
+updateCheckpoint(agent: Agent, request: UpdateTeamCheckpointRequest): Promise<TeamCheckpoint>
+
 /**
  * Persist supervisor-authorized assignments and dispatch ready tasks within the configured concurrency limit.
  * @param agent - exact live Lead.

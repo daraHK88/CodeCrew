@@ -102,6 +102,10 @@ The package-level contract is enough for most consumers; read these when you nee
 
 The optional global `anchoredEdits` boolean defaults to `false` and is sampled when filesystem tools are created. A plugin-local value overrides it. The CodeCrew profile enables it; recreate the agent/tool scope after a change. See the [filesystem tool reference](../../fs/tool-fs/README.md#anchored-editing) for the protocol and limits.
 
+## Coordinator and routing
+
+Global skill policy includes optional regex `rules[].pattern`, compact catalog `catalogMaxSkills` and description limits. Zero keeps the full catalog; a positive limit enables task-relevant shortlists with full permitted discovery through `skill_search`. The skill consumer samples catalog settings at activation and reads routing rules live.
+
 <a id="model-experience"></a>
 ## Model Experience
 

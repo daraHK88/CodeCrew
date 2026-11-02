@@ -9,8 +9,8 @@
   en: 6cc2cd9ced70bb09
   zh: 1c0e6cb4ba2ed637
 /tool-schema-catalog/tool-package-map:
-  en: a4210ff08c1fbea3
-  zh: 9f0ab2faf4dac009
+  en: 00def1bd05f09b2c
+  zh: ab0ab0babf218295
 /tool-schema-catalog/deepseek-ai-dsh-plugin-manager:
   en: e0143916bb634762
   zh: e0143916bb634762
@@ -219,8 +219,11 @@
   en: 927a5ac0974b7642
   zh: 927a5ac0974b7642
 /tool-schema-catalog/deepseek-ai-dsh-tool-skill/skill:
-  en: a015946d499d8a16
+  en: eb6f32f66d931bf9
   zh: 71c1b66995195120
+/tool-schema-catalog/deepseek-ai-dsh-tool-skill/skill-search:
+  en: 2d1b818110ee369e
+  zh: 64d94e3481894914
 /tool-schema-catalog/deepseek-ai-dsh-tool-session-query:
   en: eac1dff4b6d9e195
   zh: eac1dff4b6d9e195
@@ -299,6 +302,9 @@
 /tool-schema-catalog/deepseek-ai-dsh-experimental-tool-agent-team/spawn-teammate:
   en: 02d6cc746e234b99
   zh: 49bc60ac098bca48
+/tool-schema-catalog/deepseek-ai-dsh-experimental-tool-agent-team/team-checkpoint:
+  en: 14b5f7c740c7990c
+  zh: 4ebc39cff1807b73
 /tool-schema-catalog/deepseek-ai-dsh-experimental-tool-agent-team/team-dispatch:
   en: aa52c920321b8f86
   zh: 7678e31c63fecdd3

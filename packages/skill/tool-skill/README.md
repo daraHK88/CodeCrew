@@ -110,6 +110,14 @@ Optional automatic selection uses local case-insensitive keyword rules; the firs
 
 If no local rule matches, the optional scoped `skills/select-automatic` waterfall can supply candidate names. The loader still checks each current definition, model-invocation permission and whole-body budget. With no listener, selection remains empty. CodeCrew uses this boundary for its optional Jev fallback; explicit invocations and local rules retain precedence. An explicit skill call returns a compact reminder when the exact current body is already retained as automatic instructions; changed or compacted-away bodies are returned in full. Raw structured tool output still contains the full definition.
 
+## Coordinator and routing
+
+Only user input and messages from the worker’s recorded parent are treated as assignments for automatic selection and shortlist relevance. Reports from workers or other peers do not replace the current task or trigger a new classifier request.
+
+Rules accept an optional case-insensitive regular-expression `pattern`; when keywords are also supplied both must match. Use `keywords: []` for a regex-only rule. Invalid patterns fail configuration activation. An unchanged latest retained automatic body is not injected again; changed, reverted or compacted-away instructions are reloaded. Valid permitted selections emit the scoped `skills/automatic-selected` serial event, including when their identical body is already retained.
+
+`catalogMaxSkills` (or global `skills.catalogMaxSkills`) defaults to zero, preserving the full catalog. Values 1–50 publish a deterministic local task shortlist and expose `skill_search({query?, offset?})` for paged discovery across all permitted skills. A shortlist has source `shortlist: true`; this differs from failed discovery's `incomplete`. Current admitted input, then retained user/assignment input, anchors relevance across continuation. Tool restrictions still apply; hiding search restores the full permitted catalog. Catalog size and description limits are sampled at activation; rules remain live. Shortlists reduce prefix bytes, not a guarantee of billed-token savings.
+
 <a id="model-experience"></a>
 ## Model Experience
 
