@@ -1,11 +1,13 @@
 /** Team state projected incrementally from committed Session events, with a durable-only client view. */
 
 import { z } from 'zod'
+import { ReasoningEffortId } from '@deepseek-ai/dsh-llm'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
 import type { SessionEvent, SessionEventMap, SessionId } from '@deepseek-ai/dsh-session'
 import type { ProjectionDefinition } from '@deepseek-ai/dsh-session-projection'
 import type {
+  TeamDispatchSnapshot,
   TeamId,
   TeamMemberProjection,
   TeamMemberSnapshot,
@@ -83,7 +85,28 @@ const teamTaskSnapshotSchema = z.object({
   ownerId: sessionIdSchema.optional(),
   blockedBy: z.array(teamTaskIdSchema),
   writeScopes: z.array(z.string()),
+  verification: z.string().optional(),
 }).strict() as z.ZodType<TeamTaskSnapshot>
+
+const teamDispatchSchema = z.object({
+  taskId: teamTaskIdSchema, taskRevision: positiveSafeInteger,
+  name: z.string().min(1), provider: z.string().min(1),
+  agentOptions: z.object({
+    provider: z.string(), model: z.string(), reasoningEffort: z.string().transform(ReasoningEffortId).optional(),
+    maxTokens: positiveSafeInteger.optional(),
+  }).partial().strict().optional(),
+  isolation: z.enum(['shared', 'worktree']),
+  phase: z.enum(['queued', 'starting', 'running', 'review', 'blocked', 'cancelled']),
+  checkout: z.object({ path: z.string(), branch: z.string(), baseCommit: z.string(), repositoryRoot: z.string() }).strict().optional(),
+  report: z.object({
+    summary: z.string(), changedFiles: z.array(z.string()), checks: z.array(z.string()), risks: z.string(),
+  }).strict().optional(),
+  error: z.string().optional(),
+}).strict() as z.ZodType<TeamDispatchSnapshot>
+
+const teamDispatchEventSchema = z.object({
+  version: z.literal(2), teamId: teamIdSchema, dispatch: teamDispatchSchema,
+}).strict() as z.ZodType<SessionEventMap['team/dispatch']>
 
 const teamMessageSnapshotSchema = z.object({
   id: teamMessageIdSchema,
@@ -132,6 +155,7 @@ export interface TeamState {
   readonly id: TeamId
   readonly members: readonly TeamMemberSnapshot[]
   readonly tasks: readonly TeamTaskSnapshot[]
+  readonly dispatches: readonly TeamDispatchSnapshot[]
   readonly messages: readonly TeamMessageSnapshot[]
   readonly delivered: readonly TeamMessageId[]
   readonly nextTaskNumber: number
@@ -147,6 +171,7 @@ export function emptyTeamState(rootId: SessionId): TeamProjectionState {
     id: toTeamId(rootId),
     members: [],
     tasks: [],
+    dispatches: [],
     messages: [],
     delivered: [],
     nextTaskNumber: 1,
@@ -162,6 +187,7 @@ const teamProjectionEntrySchema = z.object({
   id: teamIdSchema,
   members: z.array(teamMemberSnapshotSchema),
   tasks: z.array(teamTaskSnapshotSchema),
+  dispatches: z.array(teamDispatchSchema),
   messages: z.array(teamMessageSnapshotSchema),
   delivered: z.array(teamMessageIdSchema),
   nextTaskNumber: positiveSafeInteger,
@@ -170,6 +196,7 @@ const teamProjectionEntrySchema = z.object({
 
 /** Whether one event belongs to the Team domain. */
 export type TeamEventType =
+  | 'team/dispatch'
   | 'team/member'
   | 'team/task'
   | 'team/message/queued'
@@ -184,7 +211,8 @@ type TeamSessionEvent = SessionEvent<TeamEventType>
  * @returns whether the event has a Team-owned type.
  */
 export function isTeamEvent(event: SessionEvent): event is TeamSessionEvent {
-  return event.type === 'team/member'
+  return event.type === 'team/dispatch'
+    || event.type === 'team/member'
     || event.type === 'team/task'
     || event.type === 'team/message/queued'
     || event.type === 'team/message/delivered'
@@ -202,6 +230,8 @@ function parsePersisted<T>(type: TeamEventType, schema: z.ZodType<T>, value: unk
 /** Decode the complete current-version payload selected by one Team event type. */
 function parseCurrentTeamEvent(event: TeamSessionEvent): TeamSessionEvent {
   switch (event.type) {
+    case 'team/dispatch':
+      return { ...event, data: parsePersisted(event.type, teamDispatchEventSchema, event.data) }
     case 'team/member':
       return { ...event, data: parsePersisted(event.type, teamMemberEventSchema, event.data) }
     case 'team/task':
@@ -241,6 +271,25 @@ function replaceAt<T>(items: readonly T[], index: number, item: T): T[] {
 
 function applyCurrentTeamEvent(state: TeamProjectionState, event: TeamSessionEvent): TeamProjectionState {
   switch (event.type) {
+    case 'team/dispatch': {
+      const assignment = event.data.dispatch
+      if (!state.tasks.some(task => task.id === assignment.taskId)) throw new Error('dispatch refers to a missing task')
+      const index = state.dispatches.findIndex(item => item.taskId === assignment.taskId)
+      const prior = state.dispatches[index]
+      if (prior === undefined && assignment.phase !== 'queued') throw new Error('dispatch must begin queued')
+      if (prior !== undefined) {
+        const replacement = prior.phase === 'cancelled' && assignment.phase === 'queued' && prior.name !== assignment.name
+        const transitions = {
+          queued: ['starting', 'blocked', 'cancelled'], starting: ['starting', 'running', 'review', 'blocked', 'cancelled'],
+          running: ['review', 'blocked', 'cancelled'], review: ['cancelled'], blocked: ['cancelled'], cancelled: ['cancelled'],
+        }
+        if (!replacement && (prior.name !== assignment.name || prior.taskRevision !== assignment.taskRevision
+          || prior.provider !== assignment.provider || prior.isolation !== assignment.isolation
+          || JSON.stringify(prior.agentOptions) !== JSON.stringify(assignment.agentOptions)
+          || !transitions[prior.phase].includes(assignment.phase))) throw new Error('invalid dispatch transition or changed authorization')
+      }
+      return { ...state, dispatches: replaceAt(state.dispatches, index, assignment) }
+    }
     case 'team/member': {
       const member = event.data.member
       const index = state.members.findIndex(candidate => candidate.id === member.id)
@@ -319,6 +368,7 @@ const teamTaskViewSchema = z.object({
   status: z.enum(['pending', 'in_progress', 'completed', 'deleted']),
   blockedBy: z.array(teamTaskIdSchema),
   writeScopes: z.array(z.string()),
+  verification: z.string().optional(),
   ownerName: z.string().optional(),
   ready: z.boolean(),
   writeScopeWarnings: z.array(z.string()),
@@ -380,7 +430,7 @@ export function teamProjectionView(state: TeamProjectionState): TeamProjection {
 /** Team projection selected by the projected Session identity; the wire view carries durable roster and task state only. */
 export const teamProjectionDefinition = {
   key: 'agentTeam',
-  stateVersion: 4,
+  stateVersion: 5,
   stateSchema: teamProjectionEntrySchema,
   init: header => emptyTeamState(header.id),
   apply: applyProjectionEvent,

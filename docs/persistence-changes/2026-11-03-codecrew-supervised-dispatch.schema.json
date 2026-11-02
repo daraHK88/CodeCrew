@@ -1,0 +1,41 @@
+{
+  "formatVersion": 2,
+  "roots": [
+    {"key":"event:team/dispatch","kind":"event","event":"team/dispatch","surface":false,"digest":"ae14c062747e2e01422f1fbba41b1b315fa228f21f7eca7e4f6056f4837acb37"},
+    {"key":"event:team/task","kind":"event","event":"team/task","surface":false,"digest":"22b01bdd320415f51db9465b3cb654fb989b79963ade2b203acbee0b0806af00"}
+  ],
+  "types": [],
+  "nodes": {
+    "0657d3ca5ac4e7bf": {"kind":"primitive","type":"number"},
+    "0e0c2e4d3cc973c3": {"kind":"literal","value":"review"},
+    "124be391bb09da8c": {"kind":"literal","value":"worktree"},
+    "14278c375edd8c86": {"kind":"union","types":["0e0c2e4d3cc973c3","2142e391b9ccb60d","254dce209e735f9c","c6e4fa548c431804","d1a8fd80253ae084","dd16e743389c8839"]},
+    "1ebc6f9ff3aa9e3a": {"kind":"literal","value":"completed"},
+    "2142e391b9ccb60d": {"kind":"literal","value":"cancelled"},
+    "22b01bdd320415f5": {"kind":"object","properties":[{"name":"data","type":"8f267e6282b3e250","optional":false},{"name":"ignorable","type":"dacf3d5f3e4ff619","optional":true},{"name":"seq","type":"0657d3ca5ac4e7bf","optional":false},{"name":"time","type":"0657d3ca5ac4e7bf","optional":false},{"name":"type","type":"b57ae1b37e52bee0","optional":false}],"indices":[]},
+    "234142ee4f996f38": {"kind":"literal","value":"pending"},
+    "254dce209e735f9c": {"kind":"literal","value":"blocked"},
+    "260193fd2d574b02": {"kind":"object","properties":[{"name":"agentOptions","type":"f38fd2b4d11b57b6","optional":true},{"name":"checkout","type":"81a45e7cb1203bf8","optional":true},{"name":"error","type":"4cd48f3e5108bd6e","optional":true},{"name":"isolation","type":"6c54da292ebf1c5b","optional":false},{"name":"name","type":"4cd48f3e5108bd6e","optional":false},{"name":"phase","type":"14278c375edd8c86","optional":false},{"name":"provider","type":"4cd48f3e5108bd6e","optional":false},{"name":"report","type":"4c1b2707062ee5a6","optional":true},{"name":"taskId","type":"4cd48f3e5108bd6e","optional":false},{"name":"taskRevision","type":"0657d3ca5ac4e7bf","optional":false}],"indices":[]},
+    "2bd8c75e1916018f": {"kind":"object","properties":[{"name":"dispatch","type":"260193fd2d574b02","optional":false},{"name":"teamId","type":"4cd48f3e5108bd6e","optional":false},{"name":"version","type":"a0f906856fc06f1c","optional":false}],"indices":[]},
+    "4c1b2707062ee5a6": {"kind":"object","properties":[{"name":"changedFiles","type":"93c33d9687613293","optional":false},{"name":"checks","type":"93c33d9687613293","optional":false},{"name":"risks","type":"4cd48f3e5108bd6e","optional":false},{"name":"summary","type":"4cd48f3e5108bd6e","optional":false}],"indices":[]},
+    "4cd48f3e5108bd6e": {"kind":"primitive","type":"string"},
+    "4fa2388679418cde": {"kind":"literal","value":"team/dispatch"},
+    "6c54da292ebf1c5b": {"kind":"union","types":["124be391bb09da8c","ef2bb78c4fe5ffa8"]},
+    "81a45e7cb1203bf8": {"kind":"object","properties":[{"name":"baseCommit","type":"4cd48f3e5108bd6e","optional":false},{"name":"branch","type":"4cd48f3e5108bd6e","optional":false},{"name":"path","type":"4cd48f3e5108bd6e","optional":false},{"name":"repositoryRoot","type":"4cd48f3e5108bd6e","optional":false}],"indices":[]},
+    "8f267e6282b3e250": {"kind":"object","properties":[{"name":"task","type":"c43d9883c4f11a96","optional":false},{"name":"teamId","type":"4cd48f3e5108bd6e","optional":false},{"name":"version","type":"a0f906856fc06f1c","optional":false}],"indices":[]},
+    "93c33d9687613293": {"kind":"array","element":"4cd48f3e5108bd6e"},
+    "94c56aeb1564ad73": {"kind":"literal","value":"in_progress"},
+    "a0f906856fc06f1c": {"kind":"literal","value":2},
+    "ae14c062747e2e01": {"kind":"object","properties":[{"name":"data","type":"2bd8c75e1916018f","optional":false},{"name":"ignorable","type":"dacf3d5f3e4ff619","optional":true},{"name":"seq","type":"0657d3ca5ac4e7bf","optional":false},{"name":"time","type":"0657d3ca5ac4e7bf","optional":false},{"name":"type","type":"4fa2388679418cde","optional":false}],"indices":[]},
+    "b2d2a01e51341a3b": {"kind":"union","types":["1ebc6f9ff3aa9e3a","234142ee4f996f38","94c56aeb1564ad73","e7e8f1318170b828"]},
+    "b57ae1b37e52bee0": {"kind":"literal","value":"team/task"},
+    "c43d9883c4f11a96": {"kind":"object","properties":[{"name":"blockedBy","type":"93c33d9687613293","optional":false},{"name":"description","type":"4cd48f3e5108bd6e","optional":false},{"name":"id","type":"4cd48f3e5108bd6e","optional":false},{"name":"ownerId","type":"4cd48f3e5108bd6e","optional":true},{"name":"revision","type":"0657d3ca5ac4e7bf","optional":false},{"name":"status","type":"b2d2a01e51341a3b","optional":false},{"name":"subject","type":"4cd48f3e5108bd6e","optional":false},{"name":"verification","type":"4cd48f3e5108bd6e","optional":true},{"name":"writeScopes","type":"93c33d9687613293","optional":false}],"indices":[]},
+    "c6e4fa548c431804": {"kind":"literal","value":"running"},
+    "d1a8fd80253ae084": {"kind":"literal","value":"starting"},
+    "dacf3d5f3e4ff619": {"kind":"literal","value":true},
+    "dd16e743389c8839": {"kind":"literal","value":"queued"},
+    "e7e8f1318170b828": {"kind":"literal","value":"deleted"},
+    "ef2bb78c4fe5ffa8": {"kind":"literal","value":"shared"},
+    "f38fd2b4d11b57b6": {"kind":"object","properties":[{"name":"maxTokens","type":"0657d3ca5ac4e7bf","optional":true},{"name":"model","type":"4cd48f3e5108bd6e","optional":true},{"name":"provider","type":"4cd48f3e5108bd6e","optional":true},{"name":"reasoningEffort","type":"4cd48f3e5108bd6e","optional":true}],"indices":[]}
+  }
+}

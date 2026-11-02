@@ -29,6 +29,8 @@ Desktop product events use the optional [product analytics service](../product-a
 
 Saving credentials or a custom provider preserves the selected model. The user can select an available model from the composer.
 
+The optional Coding section also edits global default and worker routes. Its supervisor-profile selector chooses an approved role for delegated planning and integration independently of the chat default; keeping the current chat model disables that dispatch-time switch. Saves use the same revision-fenced settings forms and show failures in place.
+
 DeepSeek Account appears first and DeepSeek second in the provider list; third-party providers retain their directory order.
 
 Open the Models page from the Settings navigation to see every configured provider as a row. A whole-section provider whose key is not configured anywhere renders as its open setup card instead, but only in the first-run posture and only until the user closes that card. Each card kind owns its own open state, so closing one never discards a draft in another.

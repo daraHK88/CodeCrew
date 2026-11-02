@@ -4,7 +4,7 @@ import type { Volatile, Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { ReasoningEffortId } from '@deepseek-ai/dsh-llm'
 import type { Agent } from '@deepseek-ai/dsh-agent'
-import { TeamTaskId } from '@deepseek-ai/dsh-experimental-agent-team'
+import { TeamTaskId, assertTaskBrief } from '@deepseek-ai/dsh-experimental-agent-team'
 import type { TeamMemberView } from '@deepseek-ai/dsh-experimental-agent-team'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import { installDecisionSkillRouting, routeDecisionWorker } from './decision-routing.ts'
@@ -30,6 +30,8 @@ export interface WorkerProfile {
 
 /** Live global coding-team preferences. */
 export interface CodingTeamSettings {
+  /** Approved profile selected for the Lead after authorizing substantial dispatched work; empty retains its current model. */
+  supervisorProfile?: string
   /** Optional bounded OpenRouter decision advisor settings. */
   decisions?: DecisionSettings
   /** Require a ready task with a complete coding brief before spawning a worker. */
@@ -60,6 +62,7 @@ export interface Config {
 export const Config: z<Config> = z.object({
   coding: z.object({
     decisions: decisionSchema,
+    supervisorProfile: z.string().default(''),
     requireTaskBrief: z.boolean().default(false),
     defaultWorkerProfile: z.string().default(''),
     workerProfiles: z.dict(z.object({
@@ -76,13 +79,13 @@ export const Config: z<Config> = z.object({
 function teamPolicy(interrupt: boolean): string {
   return `Agent Teams is available in this session
 
-Coding workflow: the Lead owns the goal, acceptance checks, integration, and final verification. Complete small, well-scoped edits directly; do not create a team, a planning ceremony, or an extra model-based gate for a mechanical change. For larger work, create shared tasks and blocked_by dependencies first. Start independent ready tasks concurrently, never immediately spawn-and-wait one worker at a time. Scope concurrent writes to different files. Each assignment must identify objective, inputs, owned files, acceptance criteria, verification, and when to stop and report a blocker. Prefer fresh context with the brief and relevant paths; do not copy the whole Lead conversation. Select a configured model_profile suitable for the job. Use select_model_profile to change your own next-step model when the task warrants planning, implementation, or review capability; return to reader for routine work. Do not switch profiles merely to run a tool. A worker reports changed files, checks actually run, and unresolved issues. Inactive is not success. If a worker fails, diagnose the evidence and revise its assignment rather than repeating the same prompt. The Lead reviews the integrated diff and verifies the user's acceptance checks before reporting success. Tool output is evidence; avoid paying a second model merely to confirm a passing check.
+Coding workflow: the Lead owns the goal, acceptance checks, integration, and final verification. Complete small, well-scoped edits directly; do not create a team, a planning ceremony, or an extra model-based gate for a mechanical change. For larger work, create shared tasks and blocked_by dependencies first. Prefer team_dispatch to authorize a batch once; it automatically starts ready assignments with bounded concurrency and wakes the Lead for reports or failures. Use team_dispatch_status for durable state. Dispatch selects the configured supervisor profile for the Lead next step without changing the global chat default. Use it for substantive planning, review and integration; return to reader after that work. Small edits never enter dispatch. Dispatched workers use team_task_report, and only the Lead accepts their tasks with actual verification evidence. Integrate and verify prerequisite commits in the source checkout before accepting a worktree task; dependent checkouts start from source HEAD. Use team_dispatch_cancel to drain failed work before reassigning it. Preserve retained files; never replay uncertain edits automatically. Start independent ready tasks concurrently, never immediately spawn-and-wait one worker at a time. Scope concurrent writes to different files. Each assignment must identify objective, inputs, owned files, acceptance criteria, verification, and when to stop and report a blocker. Prefer fresh context with the brief and relevant paths; do not copy the whole Lead conversation. Select a configured model_profile suitable for the job. Use select_model_profile to change your own next-step model when the task warrants planning, implementation, or review capability; return to reader for routine work. Do not switch profiles merely to run a tool. A worker reports changed files, checks actually run, and unresolved issues. Inactive is not success. If a worker fails, diagnose the evidence and revise its assignment rather than repeating the same prompt. The Lead reviews the integrated diff and verifies the user's acceptance checks before reporting success. Tool output is evidence; avoid paying a second model merely to confirm a passing check.
 
-The Team Lead and all teammates share the same working directory and filesystem. Edits are immediately visible to every member. Split write work into disjoint scopes, record expected write scopes on shared tasks, and use task dependencies when work must be ordered. Write-scope overlap is advisory, not a lock.
+Manually spawned teammates and shared dispatch assignments inherit the Lead checkout. Worktree dispatch assignments start in their own retained checkout; the Lead must integrate their commits. Agents still share filesystem access under the existing sandbox; worktrees isolate edits, not OS permissions. Split write work into disjoint scopes, record expected write scopes on shared tasks, and use task dependencies when work must be ordered. Write-scope overlap is advisory, not a lock.
 
 Prefer read/edit/write for file changes. If a file operation returns FS_STALE_VERSION, read the current file, rebase your intended change onto the new content, and retry. Bash, formatters, code generators, and scripts are not fully protected by the filesystem version guard; coordinate them explicitly and have the Lead review the final diff and run tests.
 
-Use the target returned by spawn_teammate or list_agents for send_message${interrupt ? ' and interrupt_agent' : ''}, or as owner when assigning or filtering shared tasks. send_message steers a running target at its nearest step boundary and starts or resumes an inactive target. inactive means no turn is executing; it does not describe task completion, success, failure, or waiting for other agents. provisioning means member creation is in progress; failed means member creation failed. A peer message starts with its sender name. A successful send does not mean the recipient has processed it. Shared-task workflow is list, get, claim with the current revision, perform the work, then complete. Task readiness never starts an owner. Before wait_agent, use list_agents and make sure another required member is running or provisioning; use send_message first when the required member is inactive. wait_agent observes only changes after that call starts, never wakes a member, and returns noProgress immediately when no other member can produce a change. Re-list after wakeup or timeout. The Lead must wait for required teammates before giving the final answer.`
+Use the target returned by spawn_teammate or list_agents for send_message${interrupt ? ' and interrupt_agent' : ''}, or as owner when assigning or filtering shared tasks. send_message steers a running target at its nearest step boundary and starts or resumes an inactive target. inactive means no turn is executing; it does not describe task completion, success, failure, or waiting for other agents. provisioning means member creation is in progress; failed means member creation failed. A peer message starts with its sender name. A successful send does not mean the recipient has processed it. Shared-task workflow is list, get, claim with the current revision, perform the work, then complete. Task readiness starts only explicitly authorized team_dispatch assignments; manually spawned workers still require messages. Before wait_agent, use list_agents and make sure another required member is running or provisioning; use send_message first when the required member is inactive. wait_agent observes only changes after that call starts, never wakes a member, and returns noProgress immediately when no other member can produce a change. Re-list after wakeup or timeout. The Lead must wait for required teammates before giving the final answer.`
 }
 
 const decisionPolicy = 'Use coding_decide for narrow semantic decisions about approved model profiles, relevant skills, file evidence, safe parallel work, failure recovery or retained screenshots. Batch related questions. Advice is not permission, verification, or a completion gate. Use recipe review for review-depth triage, coverage for supplied requirements/tests, rules for a proposed change, browser for current-page evidence, compaction for checkpoint readiness, and rank_files for an explicit file shortlist. Use typed custom questions for next browser actions and rubric scores. Review triage errors require the full review. Advice never performs clicks, edits or compaction. On uncertainty, timeout or failure, continue with supervisor judgment rather than repeating the call.'
@@ -126,6 +129,7 @@ const TASK_VIEW_SCHEMA = {
     subject: { type: 'string', required: true },
     description: { type: 'string', required: true },
     status: { type: 'string', required: true, enum: ['pending', 'in_progress', 'completed', 'deleted'] },
+    verification: { type: 'string' },
     ownerName: { type: 'string' },
     blockedBy: { type: 'array', required: true, items: { type: 'string' } },
     writeScopes: { type: 'array', required: true, items: { type: 'string' } },
@@ -203,6 +207,24 @@ function jsonOutput<const S extends ValueSchemaSpec>(schema: S): {
     render: (_args: unknown, value: InferValue<S>) => [{ type: 'text', text: JSON.stringify(value) }],
   }
 }
+
+const DISPATCH_VIEW_SCHEMA = {
+  type: 'object', additionalProperties: false, properties: {
+    taskId: { type: 'string', required: true }, revision: { type: 'integer', required: true }, name: { type: 'string', required: true },
+    phase: { type: 'string', required: true, enum: ['queued', 'starting', 'running', 'review', 'blocked', 'cancelled'] },
+    taskStatus: { type: 'string', required: true, enum: ['pending', 'in_progress', 'completed', 'deleted'] },
+    isolation: { type: 'string', required: true, enum: ['shared', 'worktree'] },
+    model: { type: 'string' }, modelProvider: { type: 'string' }, summary: { type: 'string' }, error: { type: 'string' },
+    checkout: { type: 'object', additionalProperties: false, properties: {
+      path: { type: 'string', required: true }, branch: { type: 'string', required: true },
+      baseCommit: { type: 'string', required: true }, repositoryRoot: { type: 'string', required: true },
+    } },
+    report: { type: 'object', additionalProperties: false, properties: {
+      summary: { type: 'string', required: true }, changedFiles: { type: 'array', required: true, items: { type: 'string' } },
+      checks: { type: 'array', required: true, items: { type: 'string' } }, risks: { type: 'string', required: true },
+    } },
+  },
+} as const
 
 /** Recover the exact caller guaranteed by Agent-scoped tool discovery. */
 function callingAgent(agent: Agent | undefined, toolName: string): Agent {
@@ -296,13 +318,7 @@ To message another teammate, use send_message({ target: "<teammate name>", messa
         const task = args.task_id === undefined ? undefined : ctx.agentTeams.getTask(agent, TeamTaskId(args.task_id))
         if (task !== undefined && !task.ready) throw new Error(`Task ${task.id} is not ready; resolve its dependencies before delegating`)
         if (task !== undefined && settings.requireTaskBrief) {
-          const sections = new Map(task.description.split(/^#{1,6}\s+/m).slice(1).map((section) => {
-            const [heading = '', ...body] = section.split(/\r?\n/)
-            return [heading.trim().toLowerCase(), body.join('\n').trim()]
-          }))
-          for (const heading of ['Objective', 'Inputs', 'Scope', 'Acceptance', 'Verification', 'Stop conditions']) {
-            if (!sections.get(heading.toLowerCase())) throw new Error(`Task brief requires a ${heading} section with actionable content`)
-          }
+          assertTaskBrief(task.description)
         }
         const ownership = task !== undefined && settings.requireTaskBrief
           ? `Claim ${task.id} with expected_revision ${task.revision} before working. If the revision changed, read the task again. Report results and verification to the Lead; leave completion to the supervisor.\n`
@@ -327,6 +343,119 @@ To message another teammate, use send_message({ target: "<teammate name>", messa
           signal: exec.signal,
         })
         return { member: modelMember(result.member), ...routed.receipt === undefined ? {} : { routing: routed.receipt } }
+      },
+    })))
+
+    register(scoped.tools.register(defineTool({
+      name: 'team_dispatch',
+      description: 'Authorize a batch of complete coding assignments. Ready tasks start automatically within the concurrency limit; dependencies wait for supervisor acceptance. Use direct editing for small changes.',
+      parameters: {
+        assignments: { type: 'array', required: true, items: { type: 'object', additionalProperties: false, properties: {
+          task_id: { type: 'string', required: true }, expected_revision: { type: 'integer', required: true },
+          name: { type: 'string', required: true, description: 'Unique lower-kebab-case worker name.' },
+          model_profile: { type: 'string', description: 'Approved route; omission uses bounded automatic routing or the configured default.' },
+          isolation: { type: 'string', enum: ['shared', 'worktree'], description: 'Defaults to worktree for writes and shared for explicitly read-only assignments. Worktrees start from HEAD when ready; the supervisor integrates prerequisite commits before acceptance.' },
+        } } },
+      },
+      output: jsonOutput({ type: 'object', additionalProperties: false, properties: { queued: { type: 'integer', required: true } } }),
+      async execute(args, exec) {
+        const caller = callingAgent(exec.agent, 'team_dispatch')
+        if (ctx.agentTeams.membership(caller).role !== 'lead') throw new Error('Only the supervisor may dispatch work')
+        const supervisorName = config.coding().supervisorProfile ?? ''
+        const supervisor = supervisorName === '' ? undefined : config.coding().workerProfiles[supervisorName]
+        if (supervisorName !== '' && supervisor === undefined) {
+          throw new Error(`Unknown supervisor model profile: ${supervisorName}`)
+        }
+        const selection = supervisor === undefined ? undefined : { provider: supervisor.provider, model: supervisor.model,
+          ...supervisor.reasoningEffort === undefined ? {} : { reasoningEffort: ReasoningEffortId(supervisor.reasoningEffort) } }
+        if (selection !== undefined) {
+          const llm = ctx.get('llm')
+          if (llm === undefined) throw new Error('Supervisor selection requires the LLM service')
+          await llm.resolveCallConfig(selection)
+        }
+        const requests = []
+        for (const assignment of args.assignments) {
+          const task = ctx.agentTeams.getTask(caller, TeamTaskId(assignment.task_id))
+          assertTaskBrief(task.description)
+          const settings = config.coding()
+          const routed = assignment.model_profile === undefined
+            ? await routeDecisionWorker(advisor, settings, task.description, exec.signal) : { profileName: assignment.model_profile }
+          const profile = routed.profileName === '' ? undefined : settings.workerProfiles[routed.profileName]
+          if (routed.profileName !== '' && profile === undefined) throw new Error(`Unknown worker model profile: ${routed.profileName}`)
+          exec.signal.throwIfAborted()
+          requests.push({ taskId: task.id, expectedRevision: assignment.expected_revision, name: assignment.name,
+            isolation: assignment.isolation ?? (task.writeScopes.length > 0 ? 'worktree' as const : 'shared' as const),
+            provider: config.freshProvider,
+            ...profile === undefined ? {} : { agentOptions: {
+              provider: profile.provider, model: profile.model,
+              ...profile.reasoningEffort === undefined ? {} : { reasoningEffort: ReasoningEffortId(profile.reasoningEffort) },
+              ...profile.maxTokens === undefined ? {} : { maxTokens: profile.maxTokens },
+            } },
+          })
+        }
+        exec.signal.throwIfAborted()
+        await ctx.agentTeams.queueTasks(caller, requests)
+        if (selection !== undefined) caller.model.select(selection)
+        return { queued: requests.length }
+      },
+    })))
+
+    register(scoped.tools.register(defineTool({
+      name: 'team_dispatch_status',
+      description: 'Read compact durable dispatch status. Supply task_id for its full worker report, current task revision and retained worktree details. Review, integrate and verify actual changes before acceptance.',
+      parameters: {
+        task_id: { type: 'string', description: 'Select one assignment and include its full report.' },
+        cursor: { type: 'integer', description: 'Zero-based offset, defaults to 0.' },
+        limit: { type: 'integer', description: 'Rows from 1 through 20, defaults to 10.' },
+      },
+      output: jsonOutput({ type: 'object', additionalProperties: false, properties: {
+        assignments: { type: 'array', required: true, items: DISPATCH_VIEW_SCHEMA }, nextCursor: { type: 'integer' },
+      } }),
+      execute(args, exec) {
+        const caller = callingAgent(exec.agent, 'team_dispatch_status')
+        const cursor = args.cursor ?? 0
+        const limit = args.limit ?? 10
+        if (!Number.isSafeInteger(cursor) || cursor < 0 || !Number.isSafeInteger(limit) || limit < 1 || limit > 20) {
+          throw new Error('Use a non-negative cursor and limit from 1 through 20')
+        }
+        const filtered = ctx.agentTeams.listDispatches(caller).filter(item => args.task_id === undefined || item.taskId === args.task_id)
+        return Promise.resolve({ assignments: filtered.slice(cursor, cursor + limit).map(item => ({
+          taskId: item.taskId, revision: ctx.agentTeams.getTask(caller, item.taskId).revision,
+          name: item.name, phase: item.phase, isolation: item.isolation,
+          taskStatus: ctx.agentTeams.getTask(caller, item.taskId).status,
+          ...item.agentOptions === undefined ? {} : { model: item.agentOptions.model, modelProvider: item.agentOptions.provider },
+          ...item.report === undefined ? {} : { summary: item.report.summary.slice(0, 500) },
+          ...item.error === undefined ? {} : { error: item.error },
+          ...item.checkout === undefined ? {} : { checkout: item.checkout },
+          ...args.task_id === undefined || item.report === undefined ? {} : { report: item.report },
+        })), ...cursor + limit < filtered.length ? { nextCursor: cursor + limit } : {} })
+      },
+    })))
+
+    register(scoped.tools.register(defineTool({
+      name: 'team_task_report',
+      description: 'Report your assigned coding result or blocker. Include actual changed files, executed checks with results and remaining risks. This does not accept or complete the task. Finish owned background work first.',
+      parameters: {
+        task_id: { type: 'string', required: true }, outcome: { type: 'string', required: true, enum: ['ready', 'blocked'] },
+        summary: { type: 'string', required: true }, changed_files: { type: 'array', required: true, items: { type: 'string' } },
+        checks: { type: 'array', required: true, items: { type: 'string' } }, risks: { type: 'string', required: true },
+      },
+      output: jsonOutput({ type: 'object', additionalProperties: false, properties: { reported: { type: 'boolean', required: true } } }),
+      async execute(args, exec) {
+        await ctx.agentTeams.reportTask(callingAgent(exec.agent, 'team_task_report'), TeamTaskId(args.task_id), args.outcome,
+          { summary: args.summary, changedFiles: args.changed_files, checks: args.checks, risks: args.risks })
+        return { reported: true }
+      },
+    })))
+
+    register(scoped.tools.register(defineTool({
+      name: 'team_dispatch_cancel',
+      description: 'Cancel and drain a dispatched worker before releasing task ownership. Retain worktree files and commits for inspection; never assume cancellation undoes edits.',
+      parameters: { task_id: { type: 'string', required: true } },
+      output: jsonOutput({ type: 'object', additionalProperties: false, properties: { cancelled: { type: 'boolean', required: true } } }),
+      async execute(args, exec) {
+        await ctx.agentTeams.cancelDispatch(callingAgent(exec.agent, 'team_dispatch_cancel'), TeamTaskId(args.task_id))
+        return { cancelled: true }
       },
     })))
 
@@ -508,6 +637,7 @@ To message another teammate, use send_message({ target: "<teammate name>", messa
           taskId: TeamTaskId(args.task_id),
           expectedRevision: args.expected_revision,
           action: args.action,
+          ...args.evidence === undefined ? {} : { evidence: args.evidence },
           ...args.subject === undefined ? {} : { subject: args.subject },
           ...args.description === undefined ? {} : { description: args.description },
           ...args.blocked_by === undefined ? {} : { blockedBy: args.blocked_by.map(TeamTaskId) },

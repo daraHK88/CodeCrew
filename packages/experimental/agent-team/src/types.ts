@@ -82,6 +82,40 @@ export interface TeamTaskSnapshot {
   readonly ownerId?: SessionId
   readonly blockedBy: TeamTaskId[]
   readonly writeScopes: string[]
+  /** Supervisor's actual verification evidence for the completed revision. */
+  readonly verification?: string
+}
+
+/** Worker outcome awaiting supervisor acceptance; checks are reported evidence, not an independent guarantee. */
+export interface TeamTaskReport {
+  readonly summary: string
+  readonly changedFiles: string[]
+  readonly checks: string[]
+  readonly risks: string
+}
+
+/** A durable supervisor-authorized assignment, keyed by its existing shared task. */
+export interface TeamDispatchSnapshot {
+  readonly taskId: TeamTaskId
+  readonly taskRevision: number
+  readonly name: string
+  readonly provider: string
+  readonly agentOptions?: Partial<ModelSelection> & { readonly maxTokens?: number }
+  readonly isolation: 'shared' | 'worktree'
+  readonly phase: 'queued' | 'starting' | 'running' | 'review' | 'blocked' | 'cancelled'
+  readonly checkout?: { readonly path: string; readonly branch: string; readonly baseCommit: string; readonly repositoryRoot: string }
+  readonly report?: TeamTaskReport
+  readonly error?: string
+}
+
+/** One current task revision the Lead authorizes for bounded automatic dispatch. */
+export interface QueueTeamTaskRequest {
+  readonly taskId: TeamTaskId
+  readonly expectedRevision: number
+  readonly name: string
+  readonly provider: string
+  readonly agentOptions?: Partial<ModelSelection> & { readonly maxTokens?: number }
+  readonly isolation: 'shared' | 'worktree'
 }
 
 /** Runtime-enriched task view returned to tools and hosts. */
@@ -93,6 +127,8 @@ export interface TeamTaskView {
   readonly status: TeamTaskStatus
   readonly blockedBy: TeamTaskId[]
   readonly writeScopes: string[]
+  /** Supervisor verification retained for the accepted task revision. */
+  readonly verification?: string
   readonly ownerName?: string
   readonly ready: boolean
   readonly writeScopeWarnings: string[]
@@ -152,6 +188,8 @@ declare module '@deepseek-ai/dsh-llm' {
 
 /** Team-service deployment limits. */
 export interface Config {
+  /** Maximum concurrent dispatched workers per Team. Review alone does not occupy a model slot. */
+  readonly maxConcurrentTasks?: number
   /** Maximum immutable teammate names retained by one Team. */
   readonly maxMembers?: number
   /** Maximum non-deleted tasks retained by one Team. */
@@ -164,6 +202,10 @@ export interface Config {
 
 /** Input for creating one durable teammate. */
 export interface SpawnTeammateRequest {
+  /** Atomically reserve this task for the new worker before its first prompt. */
+  readonly assignment?: { readonly taskId: TeamTaskId; readonly expectedRevision: number }
+  /** Prepared worker checkout; omission inherits the Lead's current directory. */
+  readonly cwd?: string
   /** Explicit worker route and output budget; omission inherits the Lead options. */
   readonly agentOptions?: Partial<ModelSelection> & { readonly maxTokens?: number }
   readonly name: string
@@ -212,6 +254,8 @@ export type TeamTaskAction =
 
 /** Compare-and-set mutation of one shared task. */
 export interface UpdateTeamTaskRequest {
+  /** Actual supervisor verification, required when accepting a dispatched task. */
+  readonly evidence?: string
   readonly taskId: TeamTaskId
   readonly expectedRevision: number
   readonly action: TeamTaskAction
@@ -229,6 +273,8 @@ export interface TeamWaitResult {
 
 declare module '@deepseek-ai/dsh-session/types' {
   interface SessionEventMap {
+    /** Durable assignment authorization, execution status and reported result. */
+    'team/dispatch': { version: 2; teamId: TeamId; dispatch: TeamDispatchSnapshot }
     /** Whole teammate lifecycle value, stored only in the Team Lead Session. */
     'team/member': { version: 2; teamId: TeamId; member: TeamMemberSnapshot }
     /** Whole shared-task value, stored only in the Team Lead Session. */

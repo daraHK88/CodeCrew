@@ -118,7 +118,7 @@ export class WorktreeService extends Service {
   ): Promise<CreatedWorktree> {
     const operationSignal = signal === undefined ? this.lifetime.signal : AbortSignal.any([this.lifetime.signal, signal])
     operationSignal.throwIfAborted()
-    const operation = this.createCheckout(agent, this.resolve(agent, request), operationSignal, onPhase)
+    const operation = this.createCheckout(agent, this.resolve(agent, request), operationSignal, onPhase, request.enter ?? true)
     this.pending.add(operation)
     try {
       return await operation
@@ -171,6 +171,7 @@ export class WorktreeService extends Service {
     { branch, revision }: WorktreeSpec,
     signal: AbortSignal,
     onPhase: ((phase: CreateWorktreePhase) => void) | undefined,
+    enter: boolean,
   ): Promise<CreatedWorktree> {
     onPhase?.('prepare')
     const cwd = await this.ctx.workingDirectory.ensure(agent, signal)
@@ -195,7 +196,7 @@ export class WorktreeService extends Service {
       const overrides = await filterOverrides(run, path)
       onPhase?.('checkout')
       await run(path, ['--work-tree', path, 'reset', '--hard', '--no-recurse-submodules', baseCommit], undefined, overrides)
-      const canonicalPath = await this.ctx.workingDirectory.set(agent, path, signal)
+      const canonicalPath = enter ? await this.ctx.workingDirectory.set(agent, path, signal) : path
       return { path: canonicalPath, branch, baseCommit, repositoryRoot }
     } catch (error) {
       throw new Error(`Could not finish worktree ${branch} at ${path}. Any created checkout and branch are retained. ${error instanceof Error ? error.message : String(error)}`, { cause: error })

@@ -160,9 +160,16 @@ export class TeamTaskBoard {
           next = { ...current, blockedBy: this.dependencies(request.blockedBy, state, current.id) }
           break
         case 'complete':
+          if (state.dispatches.some(item => item.taskId === current.id)) {
+            if (!lead) throw new TeamError('Only the supervisor may accept dispatched work', 'TEAM_LEAD_REQUIRED')
+            const assignment = state.dispatches.find(item => item.taskId === current.id)
+            if (assignment?.phase !== 'review') throw new TeamError('Worker must report a reviewable result before acceptance', 'TEAM_TASK_INVALID_TRANSITION')
+            if (!taskReady(state, current)) throw new TeamError('Task dependencies must remain accepted', 'TEAM_TASK_BLOCKED')
+            requiredText(request.evidence ?? '', 'verification evidence', 16_384)
+          }
           authorizeOwner()
           if (current.status !== 'in_progress') throw new TeamError('only an in-progress task can complete', 'TEAM_TASK_INVALID_TRANSITION')
-          next = { ...current, status: 'completed' }
+          next = { ...current, status: 'completed', ...request.evidence === undefined ? {} : { verification: requiredText(request.evidence, 'verification evidence', 16_384) } }
           break
         case 'reopen':
           authorizeOwner()
@@ -200,8 +207,10 @@ export class TeamTaskBoard {
         default:
           throw new TeamError(`unsupported task action ${String(request.action)}`, 'TEAM_INVALID_ARGUMENT')
       }
+      const { verification: previousVerification, ...withoutVerification } = next
       const task: TeamTaskSnapshot = {
-        ...next,
+        ...withoutVerification,
+        ...next.status === 'completed' && previousVerification !== undefined ? { verification: previousVerification } : {},
         revision: current.revision + 1,
       }
       this.assertTaskGraph(state, task)

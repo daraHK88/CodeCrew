@@ -54,12 +54,13 @@ kind: "package-reference"
 
 ### 模型能做什么
 
-十个工具分为五类能力：
+工具提供模型选择、委派、消息、任务管理和主管分派：
 
 - **选择模型**——`select_model_profile` 为调用 agent 的下一步选择获准路由。
 - **创建 teammate**——`spawn_teammate` 接收名字、描述与初始任务；只有 Lead 可以调用它。
 - **发送消息**——`send_message` 在最近的步骤边界对运行中的成员进行 steering（中途引导）、启动或恢复非活动成员。
 - **查看与等待**——`list_agents` 返回各成员的 `target` 与可用状态；`wait_agent` 等待下一次团队变化；`interrupt_agent` 停止 teammate 的当前轮次（仅限 Lead）。
+- **分派与审查**——`team_dispatch` 按当前任务版本批量排队；`team_dispatch_status` 分页返回状态（指定 `task_id` 返回完整报告）；`team_task_report` 提交 worker 证据；`team_dispatch_cancel` 等待任务退出后释放归属。
 - **管理任务板**——`team_task_create`、`team_task_list`、`team_task_get` 与 `team_task_update` 添加、浏览、读取与更新共享任务。
 
 创建和列表结果使用 `target` 标识成员，不包含成员 Session ID。可将该值用于消息和中断调用，或任务工具的 `owner` 参数；任务的 `ownerName` 使用相同值。`inactive` 表示没有轮次在执行，包括已加载和需要恢复的成员；它不表示任务完成或结果。`provisioning` 与 `failed` 描述成员创建状态。任何成员都可以给任何其他成员发消息并使用任务板；只有 Lead 可以创建与中断 teammate。任务更新保留领域的 owner 与 revision 校验，因此过期的编辑会被拒绝，而不是覆盖更新的成果。
@@ -122,9 +123,11 @@ member scope 上的一个 `team:policy` 段落说明共享的协作规则；固�
 
 ## 编码策略
 
+`coding.supervisorProfile` 可在分派授权后为 Lead 选择获准 worker profile 路由。排队前验证路由，下一步生效，不改变全局聊天默认值。空值保留 Lead 模型。直接编辑不会触发此切换。
+
 启用 `coding.decisions.enabled` 后，`coding_decide` 提供有界的 OpenRouter 决策建议，与聊天模型分离。它批量处理 Choice、Noul（是非概率）和 Score（有序量表）问题。低于阈值的答案保持不确定；无效或自相矛盾的响应返回脱敏错误码。置信度不超过由概率分布计算的值；Choice/Score 缺少置信度时不作选择，Noul 使用 `abs(2p-1)`。置信度是分布统计量，不是正确性证明。超时、完整文本字节上限和共享的每轮请求预算限制开销。不自动重试或执行工作流动作。仍支持显式选择保留的图像；拒绝远程图像 URL。不返回凭据或提供方错误正文。工具建议单独报告模型、用量和耗时，不混入聊天模型统计。
 
-动态 `coding` 配置可要求 `spawn_teammate` 指定就绪的 `task_id`，且任务须包含非空 Markdown 节：Objective、Inputs、Scope、Acceptance、Verification 和 Stop conditions。任务描述加入 worker 提示词。`model_profile` 选择获准的 `workerProfiles` 路由，否则采用可选自动路由或 `defaultWorkerProfile`；提供方、模型、推理强度和输出上限通过原生 subagent 选项传入。启用 `requireTaskBrief` 时，仅 Lead 能完成任务，并须提供非空验证证据。`select_model_profile` 经 LLM 配置验证后，在下一步为调用 agent 选择获准路由，不保存全局默认值；worker 输出限制不改变调用者的输出限制。这些工具不自动调度任务或验证证据。
+动态 `coding` 配置可要求 `spawn_teammate` 指定就绪的 `task_id`，且任务须包含非空 Markdown 节：Objective、Inputs、Scope、Acceptance、Verification 和 Stop conditions。任务描述加入 worker 提示词。`model_profile` 选择获准的 `workerProfiles` 路由，否则采用可选自动路由或 `defaultWorkerProfile`；提供方、模型、推理强度和输出上限通过原生 subagent 选项传入。启用 `requireTaskBrief` 时，仅 Lead 能完成任务，并须提供非空验证证据。`select_model_profile` 经 LLM 配置验证后，在下一步为调用 agent 选择获准路由，不保存全局默认值；worker 输出限制不改变调用者的输出限制。`team_dispatch` 提供持久的就绪任务调度；主管仍须独立验证证据。即使手动委派不要求 brief，分派也始终要求完整 brief。写入任务默认使用 worktree；明确只读的任务可共享 checkout，Scope 须以 `None` 开头。获准模型路由在排队时固定，全局设置变化不会暗中改写已授权任务。并发上限由 Team 服务配置。失败或取消后须先检查，再以新的 worker 名字重新授权。
 
 <a id="automatic-routing-and-bounded-evidence"></a>
 ### 自动路由与有界证据

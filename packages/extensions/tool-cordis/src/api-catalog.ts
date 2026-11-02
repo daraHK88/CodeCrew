@@ -367,6 +367,28 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     description: 'Agent Teams service backed by the exact live Lead Session log.',
     methods: [
       {
+        signature: 'queueTasks(agent: Agent, requests: readonly QueueTeamTaskRequest[]): Promise<readonly TeamDispatchSnapshot[]>',
+        description: 'Persist supervisor-authorized assignments and dispatch ready tasks within the configured concurrency limit.',
+        parameters: [{ name: 'agent', description: 'exact live Lead.' }, { name: 'requests', description: 'current task revisions and worker routes; dependencies may still be pending.' }],
+        returns: 'admitted assignment state; partial storage failure requires inspection before resubmission.',
+      },
+      {
+        signature: 'listDispatches(agent: Agent): readonly TeamDispatchSnapshot[]',
+        description: 'Read persisted assignment and report state without waking workers.',
+        parameters: [{ name: 'agent', description: 'exact live Team member.' }],
+        returns: 'detached current assignments.',
+      },
+      {
+        signature: 'reportTask(agent: Agent, taskId: TeamTaskId, outcome: \'ready\' | \'blocked\', report: TeamTaskReport): Promise<void>',
+        description: 'Report an assigned worker outcome; only the Lead can accept it.',
+        parameters: [{ name: 'agent', description: 'exact live assigned worker.' }, { name: 'taskId', description: 'owned assignment.' }, { name: 'outcome', description: 'reviewable result or blocker.' }, { name: 'report', description: 'actual changed files, checks and remaining risks.' }],
+      },
+      {
+        signature: 'async cancelDispatch(agent: Agent, taskId: TeamTaskId): Promise<void>',
+        description: 'Cancel and drain a worker before releasing task ownership; files and commits are retained.',
+        parameters: [{ name: 'agent', description: 'exact live Lead.' }, { name: 'taskId', description: 'assignment to cancel.' }],
+      },
+      {
         signature: 'membership(agent: Agent): TeamMembership',
         description: 'Resolve one exact live Agent\'s Team role.',
         parameters: [{ name: 'agent', description: 'exact live Agent used as the authority credential.' }],
@@ -6146,7 +6168,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'CreateWorktreeRequest',
-    declaration: 'export interface CreateWorktreeRequest {\n    name?: string;\n    from?: string;\n}',
+    declaration: 'export interface CreateWorktreeRequest {\n    name?: string;\n    from?: string;\n    enter?: boolean;\n}',
   },
   {
     name: 'CredentialInfo',
@@ -7785,6 +7807,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type QueueAction = {\n    readonly kind: \'edit\';\n    readonly content: readonly TextBlock[];\n} | {\n    readonly kind: \'remove\';\n} | {\n    readonly kind: \'steer\';\n};',
   },
   {
+    name: 'QueueTeamTaskRequest',
+    declaration: 'export interface QueueTeamTaskRequest {\n    readonly taskId: TeamTaskId;\n    readonly expectedRevision: number;\n    readonly name: string;\n    readonly provider: string;\n    readonly agentOptions?: Partial<ModelSelection> & {\n        readonly maxTokens?: number;\n    };\n    readonly isolation: \'shared\' | \'worktree\';\n}',
+  },
+  {
     name: 'ReadFileLine',
     declaration: 'export interface ReadFileLine {\n    number: number;\n    text: string;\n}',
   },
@@ -9054,7 +9080,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'SpawnTeammateRequest',
-    declaration: 'export interface SpawnTeammateRequest {\n    readonly agentOptions?: Partial<ModelSelection> & {\n        readonly maxTokens?: number;\n    };\n    readonly name: string;\n    readonly description: string;\n    readonly prompt: ContentBlock[];\n    readonly context: \'fresh\' | \'fork\';\n    readonly provider: string;\n    readonly signal: AbortSignal;\n}',
+    declaration: 'export interface SpawnTeammateRequest {\n    readonly assignment?: {\n        readonly taskId: TeamTaskId;\n        readonly expectedRevision: number;\n    };\n    readonly cwd?: string;\n    readonly agentOptions?: Partial<ModelSelection> & {\n        readonly maxTokens?: number;\n    };\n    readonly name: string;\n    readonly description: string;\n    readonly prompt: ContentBlock[];\n    readonly context: \'fresh\' | \'fork\';\n    readonly provider: string;\n    readonly signal: AbortSignal;\n}',
   },
   {
     name: 'SpawnTeammateResult',
@@ -9381,6 +9407,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type TableValueOf<S extends DomainSpec, N extends keyof S[\'tables\']> = S[\'tables\'][N] extends DomainTableSpec<string, infer V> ? V : never;',
   },
   {
+    name: 'TeamDispatchSnapshot',
+    declaration: 'export interface TeamDispatchSnapshot {\n    readonly taskId: TeamTaskId;\n    readonly taskRevision: number;\n    readonly name: string;\n    readonly provider: string;\n    readonly agentOptions?: Partial<ModelSelection> & {\n        readonly maxTokens?: number;\n    };\n    readonly isolation: \'shared\' | \'worktree\';\n    readonly phase: \'queued\' | \'starting\' | \'running\' | \'review\' | \'blocked\' | \'cancelled\';\n    readonly checkout?: {\n        readonly path: string;\n        readonly branch: string;\n        readonly baseCommit: string;\n        readonly repositoryRoot: string;\n    };\n    readonly report?: TeamTaskReport;\n    readonly error?: string;\n}',
+  },
+  {
     name: 'TeamId',
     declaration: 'export type TeamId = Branded<\'TeamId\'>;',
   },
@@ -9401,12 +9431,16 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type TeamTaskId = Branded<\'TeamTaskId\'>;',
   },
   {
+    name: 'TeamTaskReport',
+    declaration: 'export interface TeamTaskReport {\n    readonly summary: string;\n    readonly changedFiles: string[];\n    readonly checks: string[];\n    readonly risks: string;\n}',
+  },
+  {
     name: 'TeamTaskStatus',
     declaration: 'export type TeamTaskStatus = \'pending\' | \'in_progress\' | \'completed\' | \'deleted\';',
   },
   {
     name: 'TeamTaskView',
-    declaration: 'export interface TeamTaskView {\n    readonly id: TeamTaskId;\n    readonly revision: number;\n    readonly subject: string;\n    readonly description: string;\n    readonly status: TeamTaskStatus;\n    readonly blockedBy: TeamTaskId[];\n    readonly writeScopes: string[];\n    readonly ownerName?: string;\n    readonly ready: boolean;\n    readonly writeScopeWarnings: string[];\n}',
+    declaration: 'export interface TeamTaskView {\n    readonly id: TeamTaskId;\n    readonly revision: number;\n    readonly subject: string;\n    readonly description: string;\n    readonly status: TeamTaskStatus;\n    readonly blockedBy: TeamTaskId[];\n    readonly writeScopes: string[];\n    readonly verification?: string;\n    readonly ownerName?: string;\n    readonly ready: boolean;\n    readonly writeScopeWarnings: string[];\n}',
   },
   {
     name: 'TeamWaitResult',
@@ -9926,7 +9960,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'UpdateTeamTaskRequest',
-    declaration: 'export interface UpdateTeamTaskRequest {\n    readonly taskId: TeamTaskId;\n    readonly expectedRevision: number;\n    readonly action: TeamTaskAction;\n    readonly subject?: string;\n    readonly description?: string;\n    readonly blockedBy?: readonly TeamTaskId[];\n    readonly writeScopes?: readonly string[];\n    readonly owner?: string;\n}',
+    declaration: 'export interface UpdateTeamTaskRequest {\n    readonly evidence?: string;\n    readonly taskId: TeamTaskId;\n    readonly expectedRevision: number;\n    readonly action: TeamTaskAction;\n    readonly subject?: string;\n    readonly description?: string;\n    readonly blockedBy?: readonly TeamTaskId[];\n    readonly writeScopes?: readonly string[];\n    readonly owner?: string;\n}',
   },
   {
     name: 'UserMessage',

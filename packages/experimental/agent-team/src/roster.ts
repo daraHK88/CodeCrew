@@ -257,7 +257,18 @@ export class TeamRoster {
       if (state.members.length >= this.maxMembers) {
         throw new TeamError(`Team member limit ${this.maxMembers} reached`, 'TEAM_MEMBER_LIMIT')
       }
+      const assignment = request.assignment
+      const task = assignment === undefined ? undefined : state.tasks.find(item => item.id === assignment.taskId)
+      if (assignment !== undefined && (task === undefined || task.revision !== assignment.expectedRevision
+        || task.status !== 'pending' || task.ownerId !== undefined
+        || !task.blockedBy.every(id => state.tasks.some(item => item.id === id && item.status === 'completed')))) {
+        throw new TeamError('Assignment changed or is not ready; inspect the current task', 'TEAM_TASK_STALE_REVISION')
+      }
       await this.journal.appendAndFlush(root, 'team/member', { version: 2, teamId: TeamId(root.id), member })
+      if (task !== undefined) {
+        await this.journal.appendAndFlush(root, 'team/task', { version: 2, teamId: TeamId(root.id),
+          task: { ...task, revision: task.revision + 1, status: 'in_progress', ownerId: childId } })
+      }
     })
 
     try {
@@ -269,6 +280,7 @@ export class TeamRoster {
         request: {
           prompt: request.prompt,
           parent: root,
+          ...request.cwd === undefined ? {} : { cwd: request.cwd },
           ...request.agentOptions === undefined ? {} : { agentOptions: request.agentOptions },
         },
         signal,

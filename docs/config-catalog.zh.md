@@ -898,11 +898,13 @@ export interface Config {
 ## `@deepseek-ai/dsh-experimental-agent-team`
 
 - `inject`: `agents` · `sessions` · `sessionPersistence` · `sessionProjections` · `subagents`
-- `source`: [`packages/experimental/agent-team/src/types.ts:154`](../packages/experimental/agent-team/src/types.ts)
+- `source`: [`packages/experimental/agent-team/src/types.ts:190`](../packages/experimental/agent-team/src/types.ts)
 
 ```ts config-catalog
 /** Team-service deployment limits. */
 export interface Config {
+  /** Maximum concurrent dispatched workers per Team. Review alone does not occupy a model slot. */
+  readonly maxConcurrentTasks?: number
   /** Maximum immutable teammate names retained by one Team. */
   readonly maxMembers?: number
   /** Maximum non-deleted tasks retained by one Team. */
@@ -1454,7 +1456,7 @@ export interface Config {
 
 - `inject`: `agents` · `agentTeams` · `tools` · `systemPrompt`
 - `refs`: `Volatile` (`@deepseek-ai/cordis`)
-- `source`: [`packages/experimental/tool-agent-team/src/index.ts:48`](../packages/experimental/tool-agent-team/src/index.ts)
+- `source`: [`packages/experimental/tool-agent-team/src/index.ts:50`](../packages/experimental/tool-agent-team/src/index.ts)
 
 ```ts config-catalog
 /** Tool routing configuration. */
@@ -1471,6 +1473,8 @@ export interface Config {
 
 /** Live global coding-team preferences. */
 export interface CodingTeamSettings {
+  /** Approved profile selected for the Lead after authorizing substantial dispatched work; empty retains its current model. */
+  supervisorProfile?: string
   /** Optional bounded OpenRouter decision advisor settings. */
   decisions?: DecisionSettings
   /** Require a ready task with a complete coding brief before spawning a worker. */

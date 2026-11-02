@@ -167,9 +167,15 @@ Mailbox 投影与 checkpoint 准入保留本地声明的校验器之外获准内
 
 -----
 
+<a id="coding-policy"></a>
 ## 编码策略
 
 `SpawnTeammateRequest.agentOptions` 可为新 worker 指定原生提供方、模型、推理强度和输出限制。成员表将这些选项传给 subagent 提供方；模型有效性检查和持久选择记录仍由原生实现负责。
+
+`queueTasks` 按当前任务版本持久授权完整编码任务。就绪分派在 `maxConcurrentTasks` 限额内启动（默认 3）；依赖须经主管验收。共享 checkout 中声明写入范围重叠的任务等待。可选 worktree 隔离在任务就绪时从源 HEAD 创建 checkout，不移动 Lead。验收前须整合前置任务提交。worktree 沿用现有沙箱，不隔离操作系统权限。
+
+Worker 通过 `reportTask` 报告变更文件、实际执行的检查及风险。就绪报告至少需要一项检查，但不会完成任务。分派任务仅能由 Lead 在收到就绪报告后凭非空验证证据完成，证据随任务版本保存。报告仍须检查，不等于已独立验证的命令结果。未报告便停止或被中断的 worker 标为阻塞，不重放效果不确定的编辑。`cancelDispatch` 等待启动及子任务退出后才释放归属，保留文件和提交。Lead Session 打开时恢复排队授权。持久状态无效则停止分派并报告不确定性，不自动重试。
+
 
 <a id="model-experience"></a>
 
@@ -204,10 +210,10 @@ Peer 消息追加在 target 可复用历史前缀之后。冷恢复会先复用�
 
 - **完整视图广播** — 每次 roster 或任务变化都会把完整 roster 和未删除任务板（含描述）发给所有已连接浏览器，即使它正在查看其他 Session。
 - **实验原型，无稳定性承诺**——本包公开发布，但孵化期间约定仍可自由变更。
-- **单进程、共享 checkout**——成员共享 cwd，修改立即可见；本包不提供 worktree、远端成员、merge 或文件锁。
+- **单进程**——手动创建的 worker 默认共享 Lead checkout；分派任务可选 worktree。无自动 merge、远端成员或文件锁。
 - **write scope 仅作提示**——Bash、formatter、代码生成器与直接外部写入可以绕过文件版本检查；Lead 必须协调 owner 并检查最终 diff。
 - **扁平且不可变的 roster**——只有 Lead 可以创建直接 teammate；不支持嵌套 Team、重命名、删除或名字复用。
-- **不会自动释放 owner**——成员不活动、interrupt、进程退出与工作失败都不会释放任务 owner。
+- **显式恢复**——不活动和失败时保留 owner 以供检查。主管取消分派任务会先等待退出再释放归属；手动任务仍须显式释放。
 - **无发送重试保证**——Team 不保留新尝试，也不对其去重；不支持多个进程同时操作一个 Team。从未到达目标的历史排队消息不会被投递。
 
 <a id="dev-note"></a>

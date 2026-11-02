@@ -43,6 +43,7 @@ function runtimeContextText(request: GenerateOptions) {
 
 const SIGNAL = new AbortController().signal
 const TOOL_NAMES = [
+  'team_dispatch', 'team_dispatch_status', 'team_task_report', 'team_dispatch_cancel',
   'select_model_profile',
   'spawn_teammate',
   'send_message',
@@ -259,7 +260,7 @@ describe('dsh-tool-team', () => {
     expect(leadPrompt).toContain('Agent Teams is available in this session\n\n')
     expect(leadPrompt).toContain('FS_STALE_VERSION')
     expect(leadPrompt).toContain('Bash, formatters, code generators, and scripts are not fully protected')
-    expect(leadPrompt).toContain('Task readiness never starts an owner')
+    expect(leadPrompt).toContain('Task readiness starts only explicitly authorized team_dispatch assignments')
     expect(leadPrompt).toContain('returns noProgress immediately')
     expect(leadPrompt).not.toContain('Your Team role')
     expect(renderContextSnapshot(leadAssembly)).toContain('You are the Team Lead named "lead".')
@@ -1056,4 +1057,37 @@ it('isolates automatic skill requests and budgets between multiple live agents',
     await runTurn(other, 'Analyze intermittent cancellation failures in a different component.')
     expect(fetcher).toHaveBeenCalledTimes(2)
   } finally { vi.unstubAllGlobals() }
+})
+
+it('dispatches an approved route and exposes bounded reports without accepting worker self-approval', async () => {
+  const { ctx, lead, adapter, fiber } = await setup(['hang', textResponse('Supervisor review'), textResponse('Worker cancelled')])
+  await fiber.dispose()
+  await ctx.plugin(toolTeam, { coding: { supervisorProfile: 'planner', requireTaskBrief: true, defaultWorkerProfile: 'reader', workerProfiles: {
+    reader: { provider: 'mock', model: 'cheap-reader', maxTokens: 1024 },
+    planner: { provider: 'mock', model: 'capable-supervisor' },
+  } } } as never)
+  const task = await ctx.agentTeams.createTask(lead, { subject: 'Read source', description: '## Objective\nInspect source.\n## Inputs\nsrc/example.js\n## Scope\nNone; read-only.\n## Acceptance\nConcrete findings.\n## Verification\nInspect assertions.\n## Stop conditions\nReport missing input.' })
+  const args = { assignments: [{ task_id: task.id, expected_revision: task.revision, name: 'dispatched-reader', model_profile: 'reader' }] }
+  expect(text(await execute(ctx, lead, 'team_dispatch', { assignments: [{ ...args.assignments[0], model_profile: 'unknown' }] }))).toContain('Unknown worker model profile')
+  expect(ctx.agentTeams.listDispatches(lead)).toHaveLength(0)
+  expect(text(await execute(ctx, lead, 'team_dispatch', args))).toContain('"queued":1')
+  expect(lead.model.current()).toMatchObject({ provider: 'mock', model: 'capable-supervisor' })
+  const worker = await vi.waitFor(() => {
+    const member = ctx.agentTeams.listMembers(lead).find(item => item.name === 'dispatched-reader')
+    expect(member?.status).toBe('running')
+    return ctx.agents.get(member!.id)!
+  })
+  expect(adapter.requests.find(request => request.sessionId === worker.id)).toMatchObject({ model: 'cheap-reader', maxTokens: 1024 })
+  const report = { task_id: task.id, outcome: 'ready', summary: 'Checked assertions', changed_files: [], checks: ['Inspected the source assertions; expected values match'], risks: 'Runtime not executed' }
+  expect(text(await execute(ctx, worker, 'team_task_report', { ...report, checks: [] }))).toContain('requires checks')
+  expect(text(await execute(ctx, worker, 'team_task_report', report))).toContain('"reported":true')
+  const compact = JSON.parse(text(await execute(ctx, lead, 'team_dispatch_status', {}))) as { assignments: object[] }
+  expect(compact.assignments[0]).toMatchObject({ taskId: task.id, phase: 'review', model: 'cheap-reader' })
+  expect(compact.assignments[0]).not.toHaveProperty('report')
+  const detailed = JSON.parse(text(await execute(ctx, lead, 'team_dispatch_status', { task_id: task.id }))) as { assignments: object[] }
+  expect(detailed.assignments[0]).toHaveProperty('report.checks', report.checks)
+  expect(text(await execute(ctx, worker, 'team_task_update', { task_id: task.id, expected_revision: 2, action: 'complete', evidence: 'self-approved' }))).toContain('Only the supervisor')
+  expect(text(await execute(ctx, lead, 'team_dispatch_cancel', { task_id: task.id }))).toContain('"cancelled":true')
+  expect(ctx.agentTeams.getTask(lead, task.id)).toMatchObject({ status: 'pending' })
+  expect(ctx.agents.get(worker.id)).toBeUndefined()
 })

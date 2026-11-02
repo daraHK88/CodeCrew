@@ -68,12 +68,16 @@ interface TeamTaskSnapshot {
   readonly ownerId?: SessionId
   readonly blockedBy: TeamTaskId[]
   readonly writeScopes: string[]
+  /** Supervisor's actual verification evidence for the completed revision. */
+  readonly verification?: string
 }
 ```
 
 `pending` is unstarted or released, `in_progress` carries an owner, `completed` satisfies blockers, and `deleted` is a retained tombstone. Views add owner name, readiness, and write-scope overlap warnings without changing the durable snapshot.
 
 <a id="web-projection"></a>
+
+`QueueTeamTaskRequest` authorizes a task revision, a unique worker name, an approved provider/model route and shared or worktree isolation. `TeamDispatchSnapshot` persists that authorization with queued, starting, running, review, blocked or cancelled phase, optional retained checkout and `TeamTaskReport`. Reports contain summary, changed files, checks and risks. Dispatch is optional and Lead-authorized; dependency completion still requires supervisor verification. See the [package reference](../../packages/experimental/agent-team/README.md#coding-policy) for scheduling, cancellation and recovery.
 
 ## Web projection
 
@@ -101,6 +105,8 @@ interface TeamTaskView {
   readonly status: TeamTaskStatus
   readonly blockedBy: TeamTaskId[]
   readonly writeScopes: string[]
+  /** Supervisor verification retained for the accepted task revision. */
+  readonly verification?: string
   readonly ownerName?: string
   readonly ready: boolean
   readonly writeScopeWarnings: string[]
@@ -139,6 +145,37 @@ Generated from source by `scripts/gen-cordis-catalog.ts` (verified fresh by `pnp
 Agent Teams service backed by the exact live Lead Session log.
 
 ```ts cordis-catalog
+/**
+ * Persist supervisor-authorized assignments and dispatch ready tasks within the configured concurrency limit.
+ * @param agent - exact live Lead.
+ * @param requests - current task revisions and worker routes; dependencies may still be pending.
+ * @returns admitted assignment state; partial storage failure requires inspection before resubmission.
+ */
+queueTasks(agent: Agent, requests: readonly QueueTeamTaskRequest[]): Promise<readonly TeamDispatchSnapshot[]>
+
+/**
+ * Read persisted assignment and report state without waking workers.
+ * @param agent - exact live Team member.
+ * @returns detached current assignments.
+ */
+listDispatches(agent: Agent): readonly TeamDispatchSnapshot[]
+
+/**
+ * Report an assigned worker outcome; only the Lead can accept it.
+ * @param agent - exact live assigned worker.
+ * @param taskId - owned assignment.
+ * @param outcome - reviewable result or blocker.
+ * @param report - actual changed files, checks and remaining risks.
+ */
+reportTask(agent: Agent, taskId: TeamTaskId, outcome: 'ready' | 'blocked', report: TeamTaskReport): Promise<void>
+
+/**
+ * Cancel and drain a worker before releasing task ownership; files and commits are retained.
+ * @param agent - exact live Lead.
+ * @param taskId - assignment to cancel.
+ */
+async cancelDispatch(agent: Agent, taskId: TeamTaskId): Promise<void>
+
 /**
  * Resolve one exact live Agent's Team role.
  * @param agent - exact live Agent used as the authority credential.

@@ -6,6 +6,8 @@ export interface CreateWorktreeRequest {
   name?: string
   /** Local revision to resolve before creation; omission selects HEAD. */
   from?: string
+  /** Whether to enter the checkout after creation; false prepares a worker checkout without moving the caller. Defaults to true. */
+  enter?: boolean
 }
 
 /** Committed Git baseline and the calling Session's resulting working directory. */

@@ -9,6 +9,7 @@
     freshProvider: spawn
     forkProvider: fork
     coding:
+      supervisorProfile: planner
       decisions:
         autoSelectSkills: true
         autoRouteWorkers: true
@@ -110,3 +111,8 @@
 - id: credentials
   config:
     path: !!js "(process.env.DSH_HOME || process.env.HOME + '/.codecrew') + '/.credentials.yaml'"
+- insert:
+    - id: codecrew-worktrees
+      name: '@deepseek-ai/dsh-experimental-worktree'
+      config:
+        namePrefix: crew-

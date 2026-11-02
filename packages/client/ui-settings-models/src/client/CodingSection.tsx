@@ -12,6 +12,7 @@ export interface CodingRoute { provider: string; model: string; maxTokens?: numb
 export interface CodingValues {
   defaults: CodingRoute
   team: { coding: {
+    supervisorProfile?: string
     requireTaskBrief: boolean
     defaultWorkerProfile: string
     workerProfiles: Record<string, CodingRoute>
@@ -33,6 +34,7 @@ export interface CodingValues {
 export const codingEn = {
   title: 'Coding', intro: 'Use small models for routine work and scoped workers for larger tasks. These settings apply across workspaces.',
   defaultModel: 'Default model', defaultHint: 'Used for new chats. Changing a model inside a chat affects that chat only.',
+  supervisor: 'Supervisor profile for delegated work', supervisorCurrent: 'Keep the current chat model', supervisorHint: 'Switch the lead to this approved profile for dispatched planning and integration. Small direct edits keep the chat model.',
   workers: 'Worker models', workerHint: 'The supervisor selects a profile for each assignment. Reader is the default for delegated lookups.',
   decisions: 'Decision advisor', decisionEnabled: 'Use a decision model for ambiguous choices', decisionModel: 'Decision model ID',
   decisionHint: 'Uses the OpenRouter Decisions API for short choices and optional session images. Routine edits skip it. Advice does not replace tests or supervisor judgment.',
@@ -101,6 +103,18 @@ export function CodingSection(props: InjectFace<CodingInjected>) {
     <section className={css.card}>
       <h3>{t('workers')}</h3><p className={css.hint}>{t('workerHint')}</p>
       {Object.entries(team.value?.coding.workerProfiles ?? {}).map(([profile, route]) => picker(`coding-worker-${profile}`, profile in codingEn ? t(profile as keyof typeof codingEn) : profile, route, team.writable, profile))}
+      <label className={css.field} htmlFor="coding-supervisor-profile">
+        <span>{t('supervisor')}</span>
+        <select className={modelCss.selectInput} id="coding-supervisor-profile" value={team.value?.coding.supervisorProfile ?? ''}
+          disabled={!team.writable || status === 'saving'}
+          onChange={(event) => { void save(() => props.save('team', ['coding', 'supervisorProfile'], event.target.value)) }}>
+          <option value="">{t('supervisorCurrent')}</option>
+          {Object.keys(team.value?.coding.workerProfiles ?? {}).map(profile => (
+            <option key={profile} value={profile}>{profile in codingEn ? t(profile as keyof typeof codingEn) : profile}</option>
+          ))}
+        </select>
+      </label>
+      <p className={css.hint}>{t('supervisorHint')}</p>
       <label className={css.toggle}><input type="checkbox" checked={team.value?.coding.requireTaskBrief ?? false} disabled={!team.writable || status === 'saving'} onChange={(event) => { void save(() => props.save('team', ['coding', 'requireTaskBrief'], event.target.checked)) }} /><span>{t('brief')}</span></label>
       <p className={css.hint}>{t('briefHint')}</p>
     </section>

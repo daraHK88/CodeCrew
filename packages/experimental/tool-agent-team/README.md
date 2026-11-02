@@ -54,12 +54,13 @@ Try it by asking the Lead model: "create a teammate named reviewer to check the 
 
 ### What the model can do
 
-The ten tools group into five capabilities:
+The tools provide model selection, delegation, messaging, task management and supervised dispatch:
 
 - **Choose a model** — `select_model_profile` selects an approved route for the calling agent’s next step.
 - **Create a teammate** — `spawn_teammate` takes a name, a description, and the initial task; only the Lead can call it.
 - **Send messages** — `send_message` steers a running member at its nearest step boundary, starts or resumes an inactive member.
 - **See and wait** — `list_agents` returns each member’s `target` and availability; `wait_agent` waits for the next team change; `interrupt_agent` stops a teammate's current turn (Lead only).
+- **Dispatch and review** — `team_dispatch` queues a batch against current task revisions, `team_dispatch_status` returns paged status (a `task_id` includes the full report), `team_task_report` submits worker evidence, and `team_dispatch_cancel` drains an assignment before release.
 - **Manage the task board** — `team_task_create`, `team_task_list`, `team_task_get`, and `team_task_update` add, browse, read, and update shared tasks.
 
 Creation and listing results identify members by `target`, with no member Session ID. Use that value in message and interrupt calls or the task tools’ `owner` parameter; task `ownerName` uses the same value. `inactive` means no turn is executing, whether the member is loaded or must be resumed; it does not describe task completion or outcome. `provisioning` and `failed` describe member creation. Any member can message any other member and use the task board; only the Lead creates and interrupts teammates. Task updates keep the domain's owner and revision checks, so an outdated edit is rejected instead of overwriting newer work.
@@ -120,9 +121,11 @@ Read these pages when the package-level contract is not enough. They move from t
 
 ## Coding policy
 
+`coding.supervisorProfile` optionally selects an approved worker-profile route for the Lead after dispatch authorization. Its route is validated before queue admission; selection applies at the next step without changing the global chat default. Empty retains the Lead model. Direct edits do not invoke this selection.
+
 When `coding.decisions.enabled` is true, `coding_decide` adds bounded OpenRouter decision advice, separate from chat models. It batches Choice, Noul (yes/no probability) and Score (ordered rubric) questions. Below-threshold answers remain uncertain; invalid or contradictory responses fail with sanitized codes. Reported confidence is capped by the distribution-derived confidence; missing Choice/Score confidence abstains, while Noul uses `abs(2p-1)`. Confidence is a distribution statistic, not proof of correctness. Deadlines, complete text-byte limits and a shared per-turn request budget bound overhead. No automatic retry or workflow action occurs. Explicit retained images remain supported; remote image URLs are refused. Credentials and provider error bodies are never returned. Tool advice reports model, usage and elapsed time separately from chat-model accounting.
 
-The volatile `coding` configuration optionally requires `spawn_teammate` to name a ready `task_id` with nonempty Markdown sections Objective, Inputs, Scope, Acceptance, Verification, and Stop conditions. Its description joins the worker prompt. `model_profile` selects an approved `workerProfiles` route, otherwise optional automatic routing or `defaultWorkerProfile` applies; provider, model, reasoning effort and output cap are passed through native subagent options. With `requireTaskBrief`, only the Lead can complete a task and must supply nonempty verification evidence. `select_model_profile` changes the calling agent to an approved route at the next step after LLM configuration validation, without saving a global default; worker output caps do not change the caller’s output cap. These tools do not schedule assignments or verify evidence automatically.
+The volatile `coding` configuration optionally requires `spawn_teammate` to name a ready `task_id` with nonempty Markdown sections Objective, Inputs, Scope, Acceptance, Verification, and Stop conditions. Its description joins the worker prompt. `model_profile` selects an approved `workerProfiles` route, otherwise optional automatic routing or `defaultWorkerProfile` applies; provider, model, reasoning effort and output cap are passed through native subagent options. With `requireTaskBrief`, only the Lead can complete a task and must supply nonempty verification evidence. `select_model_profile` changes the calling agent to an approved route at the next step after LLM configuration validation, without saving a global default; worker output caps do not change the caller’s output cap. Use `team_dispatch` for durable ready-task scheduling; the supervisor still verifies evidence independently. It always requires a full brief, even when manual delegation does not. Writing assignments default to worktrees; explicitly read-only assignments can share the checkout with Scope beginning `None`. Queued model routes are captured from approved settings; changing global settings does not silently rewrite an authorized assignment. The concurrency limit belongs to the Team service. A failed or cancelled assignment needs inspection and a new authorization, with a fresh worker name, before retry.
 
 <a id="automatic-routing-and-bounded-evidence"></a>
 ### Automatic routing and bounded evidence

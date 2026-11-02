@@ -6,6 +6,7 @@ import type { Agent } from '@deepseek-ai/dsh-agent'
 import type {} from '@deepseek-ai/dsh-session-persistence'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import { steerHostSubagentPrompt } from '@deepseek-ai/dsh-subagent/internal'
+import { TeamDispatcher } from './dispatch.ts'
 import { TeamActivity } from './activity.ts'
 import { errorMessage, TeamError } from './error.ts'
 import { TeamJournal } from './journal.ts'
@@ -17,6 +18,9 @@ import { TeamTaskBoard } from './task-board.ts'
 import { TeamId, TeamTaskId } from './types.ts'
 import type {
   Config,
+  QueueTeamTaskRequest,
+  TeamDispatchSnapshot,
+  TeamTaskReport,
   CreateTeamTaskRequest,
   SendTeamMessageRequest,
   SendTeamMessageResult,
@@ -31,6 +35,7 @@ import type {
 export type * from './types.ts'
 export type { TeamMembership } from './roster.ts'
 export { TeamId, TeamMessageId, TeamTaskId } from './types.ts'
+export { assertTaskBrief } from './dispatch.ts'
 export { TeamError } from './error.ts'
 
 declare module '@deepseek-ai/cordis' {
@@ -57,6 +62,7 @@ export class TeamService extends Service {
   static inject = ['agents', 'sessions', 'sessionPersistence', 'sessionProjections', 'subagents']
 
   static Config: z<Config> = z.object({
+    maxConcurrentTasks: z.number().step(1).min(1).default(3),
     maxMembers: z.number().step(1).min(1).default(DEFAULT_MAX_MEMBERS),
     maxTasks: z.number().step(1).min(1).default(DEFAULT_MAX_TASKS),
     maxMessageBytes: z.number().step(1).min(1).default(DEFAULT_MAX_MESSAGE_BYTES),
@@ -71,10 +77,12 @@ export class TeamService extends Service {
   private journal!: TeamJournal
   private roster!: TeamRoster
   private tasks!: TeamTaskBoard
+  private dispatcher!: TeamDispatcher
 
   constructor(ctx: Context, config: Config = {}) {
     super(ctx, 'agentTeams')
     this.config = {
+      maxConcurrentTasks: positiveLimit('maxConcurrentTasks', config.maxConcurrentTasks ?? 3),
       maxMembers: positiveLimit('maxMembers', config.maxMembers ?? DEFAULT_MAX_MEMBERS),
       maxTasks: positiveLimit('maxTasks', config.maxTasks ?? DEFAULT_MAX_TASKS),
       maxMessageBytes: positiveLimit('maxMessageBytes', config.maxMessageBytes ?? DEFAULT_MAX_MESSAGE_BYTES),
@@ -91,17 +99,62 @@ export class TeamService extends Service {
   protected async [Service.init](): Promise<void> {
     const ctx = this.ctx
     const teamProjectionHandle = await ctx.sessionProjections.register(teamProjectionDefinition)
-    this.journal = new TeamJournal(ctx, teamProjectionHandle, (root) => { this.activity.notify(TeamId(root.id)) })
+    this.journal = new TeamJournal(ctx, teamProjectionHandle, (root) => {
+      this.activity.notify(TeamId(root.id))
+      this.dispatcher.schedule(root)
+    })
     this.roster = new TeamRoster(ctx, this.journal, this.lifecycle, this.config.maxMembers)
     this.tasks = new TeamTaskBoard(this.journal, this.config.maxTasks)
+    this.dispatcher = new TeamDispatcher(ctx, this.journal, this.roster, this.lifecycle, this.config.maxConcurrentTasks)
     ctx.effect(() => () => this.disposeRuntime(), 'agentTeams.runtimeLifecycle()')
 
     ctx.on('agent/created', ({ agent }) => { this.scheduleRecovery(agent) })
     ctx.on('agent/status', ({ agent }) => {
       const membership = this.roster.tryMembership(agent)
-      if (membership !== undefined) this.activity.notify(membership.id)
+      if (membership !== undefined) { this.activity.notify(membership.id); this.dispatcher.schedule(membership.root) }
     })
     for (const agent of ctx.agents.list()) this.scheduleRecovery(agent)
+  }
+
+  /**
+   * Persist supervisor-authorized assignments and dispatch ready tasks within the configured concurrency limit.
+   * @param agent - exact live Lead.
+   * @param requests - current task revisions and worker routes; dependencies may still be pending.
+   * @returns admitted assignment state; partial storage failure requires inspection before resubmission.
+   */
+  queueTasks(agent: Agent, requests: readonly QueueTeamTaskRequest[]): Promise<readonly TeamDispatchSnapshot[]> {
+    return this.lifecycle.track(this.dispatcher.queue(agent, requests))
+  }
+
+  /**
+   * Read persisted assignment and report state without waking workers.
+   * @param agent - exact live Team member.
+   * @returns detached current assignments.
+   */
+  listDispatches(agent: Agent): readonly TeamDispatchSnapshot[] {
+    return this.dispatcher.list(agent)
+  }
+
+  /**
+   * Report an assigned worker outcome; only the Lead can accept it.
+   * @param agent - exact live assigned worker.
+   * @param taskId - owned assignment.
+   * @param outcome - reviewable result or blocker.
+   * @param report - actual changed files, checks and remaining risks.
+   */
+  reportTask(agent: Agent, taskId: TeamTaskId, outcome: 'ready' | 'blocked', report: TeamTaskReport): Promise<void> {
+    return this.lifecycle.track(this.dispatcher.report(agent, taskId, outcome, report))
+  }
+
+  /**
+   * Cancel and drain a worker before releasing task ownership; files and commits are retained.
+   * @param agent - exact live Lead.
+   * @param taskId - assignment to cancel.
+   */
+  async cancelDispatch(agent: Agent, taskId: TeamTaskId): Promise<void> {
+    await this.lifecycle.track(this.dispatcher.cancel(agent, taskId))
+    const task = this.tasks.get(this.roster.membership(agent), taskId)
+    if (task.status === 'in_progress') await this.updateTask(agent, { taskId, expectedRevision: task.revision, action: 'reassign' })
   }
 
   /**
@@ -247,6 +300,8 @@ export class TeamService extends Service {
   private scheduleRecovery(agent: Agent): void {
     queueMicrotask(() => {
       if (this.lifecycle.disposed) return
+      const membership = this.roster.tryMembership(agent)
+      if (membership?.role === 'lead') this.dispatcher.schedule(agent)
       void this.roster.recoverFor(agent, this.lifecycle.signal).catch((error: unknown) => {
         if (this.lifecycle.disposed) return
         this.ctx.logger.warn(`Agent Teams recovery for "${agent.id}" failed: ${errorMessage(error)}`)

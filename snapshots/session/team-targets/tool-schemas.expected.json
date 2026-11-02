@@ -276,6 +276,27 @@
       }
     },
     {
+      "name": "select_model_profile",
+      "description": "Select an approved model profile for your next step. Stay on a small profile for direct edits and tool use; switch only when planning, implementation, or review needs it.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "profile": {
+            "type": "string",
+            "description": "Profile name from the approved global coding settings."
+          },
+          "reason": {
+            "type": "string",
+            "description": "Concrete task requirement that warrants this profile."
+          }
+        },
+        "required": [
+          "profile",
+          "reason"
+        ]
+      }
+    },
+    {
       "name": "send_message",
       "description": "Send one message to another Team member. A running target receives it at the nearest step boundary; an inactive target starts or resumes a turn.",
       "parameters": {
@@ -298,7 +319,7 @@
     },
     {
       "name": "skill",
-      "description": "Load the full instructions for a skill. Call it before acting on a task that names or clearly matches a skill in the session skill catalog.",
+      "description": "Load full skill instructions before acting on a task that names or clearly matches a catalog skill. Automatically injected instructions are already loaded; do not reload them unless a refresh is needed.",
       "parameters": {
         "type": "object",
         "properties": {
@@ -330,6 +351,14 @@
             "type": "string",
             "description": "Complete initial task for the teammate."
           },
+          "model_profile": {
+            "type": "string",
+            "description": "Approved worker profile from global coding-team settings; omission uses optional automatic routing or the configured default."
+          },
+          "task_id": {
+            "type": "string",
+            "description": "Ready shared task whose description is the complete assignment brief."
+          },
           "context": {
             "type": "string",
             "description": "fresh starts without Lead history; fork inherits completed Lead turns. Defaults to fresh.",
@@ -344,6 +373,90 @@
           "description",
           "prompt"
         ]
+      }
+    },
+    {
+      "name": "team_dispatch",
+      "description": "Authorize a batch of complete coding assignments. Ready tasks start automatically within the concurrency limit; dependencies wait for supervisor acceptance. Use direct editing for small changes.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "assignments": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "task_id": {
+                  "type": "string"
+                },
+                "expected_revision": {
+                  "type": "integer"
+                },
+                "name": {
+                  "type": "string",
+                  "description": "Unique lower-kebab-case worker name."
+                },
+                "model_profile": {
+                  "type": "string",
+                  "description": "Approved route; omission uses bounded automatic routing or the configured default."
+                },
+                "isolation": {
+                  "type": "string",
+                  "description": "Defaults to worktree for writes and shared for explicitly read-only assignments. Worktrees start from HEAD when ready; the supervisor integrates prerequisite commits before acceptance.",
+                  "enum": [
+                    "shared",
+                    "worktree"
+                  ]
+                }
+              },
+              "required": [
+                "task_id",
+                "expected_revision",
+                "name"
+              ]
+            }
+          }
+        },
+        "required": [
+          "assignments"
+        ]
+      }
+    },
+    {
+      "name": "team_dispatch_cancel",
+      "description": "Cancel and drain a dispatched worker before releasing task ownership. Retain worktree files and commits for inspection; never assume cancellation undoes edits.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "task_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "task_id"
+        ]
+      }
+    },
+    {
+      "name": "team_dispatch_status",
+      "description": "Read compact durable dispatch status. Supply task_id for its full worker report, current task revision and retained worktree details. Review, integrate and verify actual changes before acceptance.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "task_id": {
+            "type": "string",
+            "description": "Select one assignment and include its full report."
+          },
+          "cursor": {
+            "type": "integer",
+            "description": "Zero-based offset, defaults to 0."
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Rows from 1 through 20, defaults to 10."
+          }
+        }
       }
     },
     {
@@ -432,6 +545,51 @@
       }
     },
     {
+      "name": "team_task_report",
+      "description": "Report your assigned coding result or blocker. Include actual changed files, executed checks with results and remaining risks. This does not accept or complete the task. Finish owned background work first.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "task_id": {
+            "type": "string"
+          },
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "ready",
+              "blocked"
+            ]
+          },
+          "summary": {
+            "type": "string"
+          },
+          "changed_files": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "checks": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "risks": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "task_id",
+          "outcome",
+          "summary",
+          "changed_files",
+          "checks",
+          "risks"
+        ]
+      }
+    },
+    {
       "name": "team_task_update",
       "description": "Compare-and-set a shared task action using the latest revision from team_task_get or team_task_list.",
       "parameters": {
@@ -480,6 +638,10 @@
             "items": {
               "type": "string"
             }
+          },
+          "evidence": {
+            "type": "string",
+            "description": "Checks actually run and their results, required for supervisor completion in coding mode."
           },
           "owner": {
             "type": "string",

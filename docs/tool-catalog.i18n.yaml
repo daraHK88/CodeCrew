@@ -9,8 +9,8 @@
   en: 6cc2cd9ced70bb09
   zh: 1c0e6cb4ba2ed637
 /tool-schema-catalog/tool-package-map:
-  en: 366fb3d477508c2e
-  zh: 05fc6e7129270cf1
+  en: a4210ff08c1fbea3
+  zh: 9f0ab2faf4dac009
 /tool-schema-catalog/deepseek-ai-dsh-plugin-manager:
   en: e0143916bb634762
   zh: e0143916bb634762
@@ -299,6 +299,15 @@
 /tool-schema-catalog/deepseek-ai-dsh-experimental-tool-agent-team/spawn-teammate:
   en: 02d6cc746e234b99
   zh: 49bc60ac098bca48
+/tool-schema-catalog/deepseek-ai-dsh-experimental-tool-agent-team/team-dispatch:
+  en: aa52c920321b8f86
+  zh: 7678e31c63fecdd3
+/tool-schema-catalog/deepseek-ai-dsh-experimental-tool-agent-team/team-dispatch-cancel:
+  en: 4fc64e39a91f37d5
+  zh: f8f38588572d5036
+/tool-schema-catalog/deepseek-ai-dsh-experimental-tool-agent-team/team-dispatch-status:
+  en: 9c8a3d00331e0c16
+  zh: 1d38cd5d572717e3
 /tool-schema-catalog/deepseek-ai-dsh-experimental-tool-agent-team/team-task-create:
   en: 91e84febe063c3bd
   zh: 550555d0f44f603b
@@ -308,6 +317,9 @@
 /tool-schema-catalog/deepseek-ai-dsh-experimental-tool-agent-team/team-task-list:
   en: 2084d494aae8798a
   zh: e4c136c91028a7b1
+/tool-schema-catalog/deepseek-ai-dsh-experimental-tool-agent-team/team-task-report:
+  en: 8f45128ee2f6cbee
+  zh: c7809ea2eec9d3bc
 /tool-schema-catalog/deepseek-ai-dsh-experimental-tool-agent-team/team-task-update:
   en: 2eac7360ba68b1bd
   zh: b5d676bf288c245e

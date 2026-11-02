@@ -167,9 +167,15 @@ Read these pages when the package-level contract is not enough. They move from t
 
 -----
 
+<a id="coding-policy"></a>
 ## Coding policy
 
 `SpawnTeammateRequest.agentOptions` optionally supplies the native provider, model, reasoning effort and output limit for the new worker. The roster forwards these options to the subagent provider; native model validation and durable selection recording remain authoritative.
+
+`queueTasks` durably authorizes complete coding briefs at their current task revisions. Ready assignments start with `maxConcurrentTasks` worker slots (default 3); dependencies wait for supervisor acceptance. Shared writes with overlapping declared scopes wait. Optional worktree isolation prepares a checkout from source HEAD when the assignment becomes ready, without moving the Lead. Integrate prerequisite commits before accepting their tasks. Worktrees retain the existing sandbox and do not isolate OS permissions.
+
+Workers use `reportTask` to provide changed files, executed checks and risks. A ready report requires at least one check; it does not complete the task. Completion of dispatched work is Lead-only, requires a ready report and nonempty verification evidence, and saves that evidence with the task revision. Reports are claims to inspect, not automatically verified command results. Inactive or interrupted workers become blocked without replaying uncertain edits. `cancelDispatch` waits for startup and child teardown before releasing ownership; retained files and commits remain. Queued authorizations recover when the Lead Session opens. Invalid durable state stops dispatch and reports the uncertainty; no automatic retry runs.
+
 
 <a id="model-experience"></a>
 
@@ -204,10 +210,10 @@ These limits describe what a team cannot do yet or what needs special operationa
 
 - **Whole-view broadcasts** — each roster or task change sends the complete roster and non-deleted task board, including descriptions, to every connected browser, even when it is viewing another Session.
 - **Experimental prototype with no stability promise** — the package is public, but its contracts can change freely while it incubates.
-- **One process and one shared checkout** — members share cwd and observe edits immediately; this package provides no worktree, remote member, merge, or filesystem lock.
+- **One process** — manually spawned workers share the Lead checkout by default; dispatched worktrees are optional. There is no automatic merge, remote member, or filesystem lock.
 - **Advisory write scopes** — Bash, formatters, code generators, and direct external writers can bypass filesystem version checks; Leads must coordinate ownership and review the final diff.
 - **Flat immutable roster** — only the Lead creates direct teammates; there is no nested Team, rename, deletion, or name reuse.
-- **No automatic ownership release** — inactivity, interruption, process exit, and failed work do not release a task owner.
+- **Explicit recovery** — inactivity and failure retain ownership for inspection. Supervisor cancellation drains dispatched work before releasing it; manual assignments still require explicit release.
 - **No send retry guarantee** — Team does not retain or deduplicate new attempts; concurrent processes over one Team are unsupported. Historical queued messages that never reached their target are not delivered.
 
 <a id="dev-note"></a>

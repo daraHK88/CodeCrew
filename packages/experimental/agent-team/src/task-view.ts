@@ -55,6 +55,7 @@ export function projectTaskView(state: TeamState, task: TeamTaskSnapshot): TeamT
     status: task.status,
     blockedBy: [...task.blockedBy],
     writeScopes: [...task.writeScopes],
+    ...task.verification === undefined ? {} : { verification: task.verification },
     ...ownerName === undefined ? {} : { ownerName },
     ready: task.status === 'pending' && taskReady(state, task),
     writeScopeWarnings: [...warnings],

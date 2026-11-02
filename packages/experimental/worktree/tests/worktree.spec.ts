@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs'
-import { access, mkdir, readdir, rm, symlink, writeFile } from 'node:fs/promises'
+import { access, mkdir, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises'
 import { join, sep } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -49,6 +49,17 @@ describe('creating and entering retained worktrees', () => {
     await ctx.workingDirectory.set(agent, root)
     expect(await git(root, 'rev-parse', 'topic')).toBe(baseCommit)
     expect(await contents(join(result.path, 'tracked.txt'))).toBe('initial\n')
+  })
+
+  it('prepares an isolated worker checkout without changing the caller directory', async () => {
+    const root = await repo()
+    ctx = await harness(root)
+    const agent = testAgent(ctx, root)
+    const checkout = await ctx.worktrees.create(agent, { name: 'worker-checkout', enter: false })
+    expect(ctx.workingDirectory.get(agent.session)).toBe(root)
+    expect(await git(checkout.path, 'symbolic-ref', '--short', 'HEAD')).toBe('worker-checkout')
+    await writeFile(join(checkout.path, 'tracked.txt'), 'worker change\n')
+    expect(await readFile(join(root, 'tracked.txt'), 'utf8')).not.toBe('worker change\n')
   })
 
   it('reports the prepare stage, then the checkout stage, before each begins', async () => {

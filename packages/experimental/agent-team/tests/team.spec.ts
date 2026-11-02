@@ -1498,3 +1498,152 @@ describe('Team direct messages and waiting', () => {
     })
   })
 })
+
+/** Complete coding brief for deterministic dispatch behavior. */
+function dispatchBrief(scope = 'None; read-only analysis.'): string {
+  return `## Objective\nInspect the assigned source.\n## Inputs\nExisting project files.\n## Scope\n${scope}\n## Acceptance\nReport concrete findings.\n## Verification\nCheck source and relevant tests.\n## Stop conditions\nReport unavailable inputs or failed checks.`
+}
+
+const dispatchReport = { summary: 'Reviewed source', changedFiles: [], checks: ['Inspected source and test assertions; no mismatch found'], risks: 'No code changes; runtime behavior not exercised' }
+
+async function queueTask(ctx: Context, lead: Agent, name: string, blockedBy: TeamTaskId[] = [], writeScopes: string[] = []) {
+  const task = await ctx.agentTeams.createTask(lead, {
+    subject: name, description: dispatchBrief(writeScopes.length ? writeScopes.join(', ') : undefined), blockedBy, writeScopes,
+  })
+  return { taskId: task.id, expectedRevision: task.revision, name, provider: 'spawn', isolation: 'shared' as const,
+    agentOptions: { provider: 'mock', model: 'mock' } }
+}
+
+async function dispatchWorker(ctx: Context, lead: Agent, name: string): Promise<Agent> {
+  return vi.waitFor(() => {
+    const member = ctx.agentTeams.listMembers(lead).find(item => item.name === name)
+    expect(member?.status).toBe('running')
+    return ctx.agents.get(member!.id)!
+  })
+}
+
+/** Keep worker streams live independently of supervisor notification turns. */
+async function setupDispatch(maxConcurrentTasks = 2, silentOnce = false) {
+  const fixture = await setup([], { maxConcurrentTasks })
+  let silent = silentOnce
+  vi.spyOn(fixture.adapter, 'stream').mockImplementation(async function* (request) {
+    fixture.adapter.requests.push(request)
+    const worker = request.messages.some(message => message.content.some(block => block.type === 'text' && block.text.startsWith('You own task-')))
+    if (!worker || silent) {
+      if (worker) silent = false
+      yield* textResponse('Supervisor notified or worker stopped without a report')
+      return
+    }
+    yield { type: 'block-start', index: 0, blockType: 'text' }
+    await new Promise<void>((_resolve, reject) => {
+      if (request.signal?.aborted) { reject(new Error('Mock worker aborted', { cause: request.signal.reason })); return }
+      request.signal?.addEventListener('abort', () => { reject(new Error('Mock worker aborted', { cause: request.signal?.reason })) }, { once: true })
+    })
+  })
+  return fixture
+}
+
+describe('Durable supervised dispatch', () => {
+  it('starts independent workers concurrently, waits for acceptance and persists supervisor evidence', async () => {
+    const { ctx, lead, adapter } = await setupDispatch()
+    const first = await queueTask(ctx, lead, 'first-reader')
+    const second = await queueTask(ctx, lead, 'second-reader')
+    const dependent = await queueTask(ctx, lead, 'dependent-reader', [first.taskId])
+    await ctx.agentTeams.queueTasks(lead, [first, second, dependent])
+    const worker = await dispatchWorker(ctx, lead, first.name)
+    await dispatchWorker(ctx, lead, second.name)
+    expect(adapter.requests).toHaveLength(2)
+    expect(ctx.agentTeams.listDispatches(lead).find(item => item.taskId === dependent.taskId)?.phase).toBe('queued')
+    await expect(ctx.agentTeams.reportTask(worker, first.taskId, 'ready', { ...dispatchReport, checks: [] })).rejects.toMatchObject({ code: 'TEAM_INVALID_ARGUMENT' })
+    await ctx.agentTeams.reportTask(worker, first.taskId, 'ready', dispatchReport)
+    const task = ctx.agentTeams.getTask(lead, first.taskId)
+    await expect(ctx.agentTeams.updateTask(worker, { taskId: task.id, expectedRevision: task.revision, action: 'complete', evidence: 'self approval' })).rejects.toMatchObject({ code: 'TEAM_LEAD_REQUIRED' })
+    await expect(ctx.agentTeams.updateTask(lead, { taskId: task.id, expectedRevision: task.revision, action: 'complete' })).rejects.toMatchObject({ code: 'TEAM_INVALID_ARGUMENT' })
+    ctx.agentTeams.interrupt(lead, first.name)
+    await worker.whenIdle()
+    expect(ctx.agentTeams.listMembers(lead).some(item => item.name === dependent.name)).toBe(false)
+    await ctx.agentTeams.updateTask(lead, { taskId: task.id, expectedRevision: task.revision, action: 'complete', evidence: 'Supervisor inspected the actual source and relevant assertions.' })
+    await dispatchWorker(ctx, lead, dependent.name)
+    expect(durable(lead).tasks.find(item => item.id === task.id)?.verification).toContain('Supervisor inspected')
+    expect(ctx.agentTeams.getTask(lead, task.id).verification).toContain('Supervisor inspected')
+  })
+
+  it('serializes overlapping shared writes until the first result is accepted', async () => {
+    const { ctx, lead } = await setupDispatch()
+    const first = await queueTask(ctx, lead, 'first-writer', [], ['src'])
+    const second = await queueTask(ctx, lead, 'second-writer', [], ['src/example.ts'])
+    await ctx.agentTeams.queueTasks(lead, [first, second])
+    const worker = await dispatchWorker(ctx, lead, first.name)
+    expect(ctx.agentTeams.listMembers(lead).some(item => item.name === second.name)).toBe(false)
+    await ctx.agentTeams.reportTask(worker, first.taskId, 'ready', dispatchReport)
+    ctx.agentTeams.interrupt(lead, first.name)
+    await worker.whenIdle()
+    const task = ctx.agentTeams.getTask(lead, first.taskId)
+    await ctx.agentTeams.updateTask(lead, { taskId: task.id, expectedRevision: task.revision, action: 'complete', evidence: 'Reviewed scoped changes and ran focused checks.' })
+    await dispatchWorker(ctx, lead, second.name)
+  })
+
+  it('blocks an inactive worker without accepting its work and permits a revised assignment after cancellation', async () => {
+    const { ctx, lead } = await setupDispatch(2, true)
+    const first = await queueTask(ctx, lead, 'silent-worker')
+    await ctx.agentTeams.queueTasks(lead, [first])
+    await vi.waitFor(() => { expect(ctx.agentTeams.listDispatches(lead)[0]?.phase).toBe('blocked') })
+    const task = ctx.agentTeams.getTask(lead, first.taskId)
+    await expect(ctx.agentTeams.updateTask(lead, { taskId: task.id, expectedRevision: task.revision, action: 'complete', evidence: 'Worker is inactive' })).rejects.toMatchObject({ code: 'TEAM_TASK_INVALID_TRANSITION' })
+    await ctx.agentTeams.cancelDispatch(lead, task.id)
+    const released = ctx.agentTeams.getTask(lead, task.id)
+    expect(released.status).toBe('pending')
+    expect(released.ownerName).toBeUndefined()
+    await ctx.agentTeams.queueTasks(lead, [{ ...first, expectedRevision: released.revision, name: 'replacement-worker' }])
+    await dispatchWorker(ctx, lead, 'replacement-worker')
+  })
+
+  it('restores queued authorization but blocks interrupted execution after service restart', async () => {
+    const { ctx, lead, teamFiber } = await setupDispatch(1)
+    const running = await queueTask(ctx, lead, 'interrupted-worker')
+    const queued = await queueTask(ctx, lead, 'queued-worker')
+    await ctx.agentTeams.queueTasks(lead, [running, queued])
+    await dispatchWorker(ctx, lead, running.name)
+    await teamFiber.dispose()
+    await ctx.plugin(TeamService, { maxConcurrentTasks: 1 })
+    await vi.waitFor(() => { expect(ctx.agentTeams.listDispatches(lead).find(item => item.taskId === running.taskId)?.phase).toBe('blocked') })
+    expect(ctx.agentTeams.listDispatches(lead).find(item => item.taskId === queued.taskId)?.phase).toBe('queued')
+    expect(ctx.agentTeams.listMembers(lead).filter(item => item.name === running.name)).toHaveLength(1)
+    await ctx.agentTeams.cancelDispatch(lead, running.taskId)
+    await dispatchWorker(ctx, lead, queued.name)
+  })
+
+  it('validates the entire batch before admitting any assignment', async () => {
+    const { ctx, lead } = await setup([])
+    const first = await queueTask(ctx, lead, 'valid-worker')
+    const invalid = await ctx.agentTeams.createTask(lead, { subject: 'No brief', description: 'Do something' })
+    await expect(ctx.agentTeams.queueTasks(lead, [first, { ...first, taskId: invalid.id, name: 'invalid-worker' }])).rejects.toMatchObject({ code: 'TEAM_INVALID_ARGUMENT' })
+    expect(ctx.agentTeams.listDispatches(lead)).toEqual([])
+    expect(ctx.agentTeams.listMembers(lead)).toHaveLength(1)
+  })
+
+  it('cancels an in-flight startup and waits for the child to drain before releasing ownership', async () => {
+    const { ctx, lead } = await setup(['hang'])
+    const entered = Promise.withResolvers<undefined>()
+    const release = Promise.withResolvers<undefined>()
+    const original = ctx.subagents.startActivation.bind(ctx.subagents)
+    vi.spyOn(ctx.subagents, 'startActivation').mockImplementationOnce(async (request) => {
+      entered.resolve(undefined)
+      await release.promise
+      return original(request)
+    })
+    const assignment = await queueTask(ctx, lead, 'cancelled-worker')
+    await ctx.agentTeams.queueTasks(lead, [assignment])
+    await entered.promise
+    let settled = false
+    const cancel = ctx.agentTeams.cancelDispatch(lead, assignment.taskId).then(() => { settled = true })
+    await vi.waitFor(() => { expect(ctx.agentTeams.listDispatches(lead)[0]?.phase).toBe('cancelled') })
+    expect(settled).toBe(false)
+    release.resolve(undefined)
+    await cancel
+    const member = ctx.agentTeams.listMembers(lead).find(item => item.name === assignment.name)
+    expect(member).toBeDefined()
+    expect(ctx.agents.get(member!.id)).toBeUndefined()
+    expect(ctx.agentTeams.getTask(lead, assignment.taskId).status).toBe('pending')
+  })
+})
