@@ -27,6 +27,8 @@ The launcher prepares the runtime and creates a local development app. On macOS 
 
 ## Configure
 
+The [UI and project preferences](UI-PREFERENCES.md) define mobile-first visual references, typography, hierarchy, preferred components, stack and production delivery. Setup creates a local `UI-PREFERENCES.md` beside the global instructions and resolves the workflow link to its absolute path. Agents read it for substantial UI work or new-project stack choices and pass relevant preferences to workers; small exact edits keep the direct path. Existing instructions and preference files are preserved when setup is rerun, so merge future workflow updates deliberately. These defaults respect an existing project's requirements.
+
 Settings → Coding also selects the supervisor profile for delegated work. Dispatch switches only the Lead's next-step model to that approved role; the initial template uses planner. Small direct edits keep the current chat model. An empty supervisor choice preserves the Lead model. Worker routes remain independent.
 
 Settings → Coding controls the global default model, reader, implementer, planner and reviewer profiles, scoped team assignments, automatic skills, memory, and per-agent parallel tool calls. A model selected in an individual chat affects that chat only. Models appear from the existing provider catalog; a provider must have working authentication before its models can run.

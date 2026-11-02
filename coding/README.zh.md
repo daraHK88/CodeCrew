@@ -27,6 +27,8 @@ DSH_HOME="$PWD/.coding-home" DSH_DESKTOP_USER_DATA_DIR="$PWD/.coding-home/electr
 
 ## 配置
 
+[UI 与项目偏好](UI-PREFERENCES.md) 定义移动优先的视觉参考、字体、层级、首选组件、技术栈与生产交付。Setup 在全局指令旁创建本地 `UI-PREFERENCES.md`，并将工作流链接解析为绝对路径。Agent 在实质性 UI 工作或新项目技术选型时读取，并将相关偏好传给 worker；精确小改保持直接路径。重复运行 setup 会保留已有指令和偏好文件，因此后续工作流更新需明确合并。这些默认值尊重现有项目要求。
+
 Settings → Coding 也可选择委派工作的主管 profile。分派仅将 Lead 下一步模型切换到该获准角色；初始模板使用 planner。小改动保持当前聊天模型。主管选项为空则不切换 Lead，worker 路由仍独立配置。
 
 Settings → Coding 控制全局默认模型、reader、implementer、planner、reviewer 配置、任务范围要求、自动技能、记忆和每个 agent 的并行工具调用数。聊天内选择的模型仅对该聊天生效。模型来自现有提供方目录，执行前须有可用认证。

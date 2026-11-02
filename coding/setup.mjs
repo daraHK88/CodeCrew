@@ -10,7 +10,10 @@ const create = async (path, value) => {
   try { await writeFile(path, value, { flag: 'wx', mode: 0o600 }) }
   catch (error) { if (error.code !== 'EEXIST') throw error }
 }
-await create(join(home, 'AGENTS.md'), await readFile(join(root, 'coding', 'AGENTS.md')))
+await create(join(home, 'UI-PREFERENCES.md'), await readFile(join(root, 'coding', 'UI-PREFERENCES.md')))
+const workflow = (await readFile(join(root, 'coding', 'AGENTS.md'), 'utf8'))
+  .replace('(UI-PREFERENCES.md)', `(<${join(home, 'UI-PREFERENCES.md')}>)`)
+await create(join(home, 'AGENTS.md'), workflow)
 const packages = []
 for (const group of await readdir(join(root, 'packages'), { withFileTypes: true })) {
   if (!group.isDirectory()) continue
