@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024" fill="none">
+  <defs>
+    <linearGradient id="tile" x1="512" y1="100" x2="512" y2="924" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#E9E9ED"/>
+    </linearGradient>
+    <linearGradient id="edge" x1="512" y1="100" x2="512" y2="924" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#D5D5DC"/>
+    </linearGradient>
+    <filter id="shadow" x="48" y="56" width="928" height="944" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="14" stdDeviation="15" flood-color="#11131A" flood-opacity="0.16"/>
+    </filter>
+  </defs>
+  <g filter="url(#shadow)">
+    <rect x="100" y="100" width="824" height="824" rx="185" fill="url(#tile)"/>
+    <rect x="101" y="101" width="822" height="822" rx="184" stroke="url(#edge)" stroke-width="2"/>
+  </g>
+  <g transform="translate(192 192) scale(20)" stroke="#25272F" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M9 9 2.5 16 9 23M23 9 29.5 16 23 23" stroke-width="2.6"/>
+    <path d="m12.5 24 7-16" stroke-width="1.8"/>
+    <g fill="#25272F" stroke="none">
+      <circle cx="12.5" cy="24" r="2"/>
+      <circle cx="16" cy="16" r="2"/>
+      <circle cx="19.5" cy="8" r="2"/>
+    </g>
+  </g>
+</svg>

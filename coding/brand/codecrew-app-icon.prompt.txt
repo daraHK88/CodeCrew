@@ -1,1 +1,2 @@
-Built-in imagegen edit of codecrew-mark.png: preserve the code brackets and connected three-node AI slash; make the mark white on a fully opaque cobalt-blue square background, with padding, crisp flat shapes, no text or extra symbols. Native application icon.
+Source: codecrew-app-icon.svg, editable vector artwork.
+macOS application icon: pearl rounded-square tile, graphite code brackets and a connected three-node slash. An 824 px opaque tile is centered on the 1024 px canvas, with 185 px corner radii, 100 px platform padding and a restrained shadow. Transparency is confined to the area outside the tile. No saturated blue background. PNG and ICNS files are rendered from the SVG at their native sizes.
