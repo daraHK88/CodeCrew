@@ -48,6 +48,8 @@ import {
   type InstructionVersionCache,
 } from '../src/state.ts'
 import { resolveConfig } from '../src/config.ts'
+import CodingSettings from '@deepseek-ai/dsh-agent-default-model/coding-settings'
+import { liveConfig } from '../../../settings/settings/tests/live-config.ts'
 import {
   AGENTS_GLOBAL_DIRECTORY,
   candidateScopeKey,
@@ -6583,4 +6585,43 @@ describe('workspace context plugin export shape', () => {
     expect(unwrapped.Config).toBeDefined()
     expect(typeof unwrapped.apply).toBe('function')
   })
+})
+
+it('restores workspace memory after compaction and reads global policy changes', async () => {
+  const root = await tempRepo()
+  const ctx = new Context()
+  try {
+    await write(join(root, '.dsh/BRIEF.md'), 'Goal: repair the login redirect. Next: verify the callback.')
+    const live = await liveConfig(ctx, CodingSettings, {
+      memory: { enabled: true, globalFile: join(root, 'absent.md'), workspaceFile: '.dsh/BRIEF.md' },
+    })
+    await mountAgentInstructions(ctx, { maxBytes: 65536 })
+    const agent = await stubAgent(root)
+    const step = () => agentEvents(ctx, agent).waterfall(
+      'agent/pre-step',
+      { modelSelection: { provider: 'mock', model: 'mock' }, messages: [], turn: 1, step: 1, signal: testToolSignal },
+      async () => ({ kind: 'enter' as const, messages: [] }),
+    )
+    const first = await step()
+    expect(first.kind).toBe('enter')
+    if (first.kind !== 'enter') throw new Error('Memory step rejected')
+    const memory = first.messages.find(message => message.source.kind === 'coding-memory')
+    expect(memory).toBeDefined()
+    if (memory === undefined) throw new Error('Memory snapshot missing')
+    const saved = agent.session.append('user/message', memory, { surfaceOp: 'append' })
+    const retained = await step()
+    expect(retained.kind === 'enter' && retained.messages.some(message => message.source.kind === 'coding-memory')).toBe(false)
+    agent.session.append('user/message', createUserMessage({
+      content: [{ type: 'text', text: 'Continue repairing the callback.' }],
+      source: checkpointSource('memory-compaction'),
+    }), { surfaceOp: { op: 'replace', startSeq: saved.seq, endSeq: saved.seq }, sourceEventSeqs: [saved.seq] })
+    const restored = await step()
+    expect(restored.kind === 'enter' && restored.messages.some(message => message.source.kind === 'coding-memory')).toBe(true)
+    await live.update({ memory: { enabled: false } })
+    const disabled = await step()
+    expect(disabled.kind === 'enter' && disabled.messages.some(message => message.source.kind === 'coding-memory')).toBe(false)
+  } finally {
+    await ctx.fiber.dispose()
+    await rm(root, { recursive: true, force: true })
+  }
 })

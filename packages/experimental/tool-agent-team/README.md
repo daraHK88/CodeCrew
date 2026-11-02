@@ -1,5 +1,5 @@
 ---
-description: "Nine tools that let the model create, message, and coordinate teammates, for compositions mounting the experimental Team plugins."
+description: "Ten tools that let the model create, message, and coordinate teammates, for compositions mounting the experimental Team plugins."
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-This package lets the model create named teammates, send them messages, inspect availability, wait for progress, interrupt stuck work, and coordinate through a shared task board. Every team member receives the same nine tools and guidance for coordinating in a shared workspace. It replaces legacy subagent controls with the same tool names, so compositions that need both must disable the legacy definitions. The package is published under its experimental name and provides no stability guarantee.
+This package lets the model create named teammates, send them messages, inspect availability, wait for progress, interrupt stuck work, and coordinate through a shared task board. Every team member receives the same ten tools and guidance for coordinating in a shared workspace. It replaces legacy subagent controls with the same tool names, so compositions that need both must disable the legacy definitions. The package is published under its experimental name and provides no stability guarantee.
 
 ## Table of Contents
 
@@ -25,7 +25,7 @@ This package lets the model create named teammates, send them messages, inspect 
 <a id="use-this-package"></a>
 ## Use this package
 
-Add this package on top of `@deepseek-ai/dsh-experimental-agent-team` when the model should run a team through tools. Once mounted, every team member — the Lead and each teammate — gets the same nine tools plus the same coordination policy. Each member receives its current role and name through required runtime context; `spawn_teammate` sends the initial task unchanged.
+Add this package on top of `@deepseek-ai/dsh-experimental-agent-team` when the model should run a team through tools. Once mounted, every team member — the Lead and each teammate — gets the same ten tools plus the same coordination policy. Each member receives its current role and name through required runtime context; `spawn_teammate` sends the initial task, optionally enriched by the required task brief.
 
 ### When to choose it
 
@@ -33,7 +33,7 @@ Choose it when the model should create and coordinate teammates by itself rather
 
 ### Smallest working example
 
-The smallest addition to an existing composition is the two-package fragment from the [agent-team README](../agent-team/README.md#smallest-working-setup): durable session storage, the team domain package, and this package. The plugin itself takes two optional settings:
+The smallest addition to an existing composition is the two-package fragment from the [agent-team README](../agent-team/README.md#smallest-working-setup): durable session storage, the team domain package, and this package. The plugin accepts delegation providers and optional coding policy:
 
 ```yaml
 - id: tool-agent-team
@@ -54,8 +54,9 @@ Try it by asking the Lead model: "create a teammate named reviewer to check the 
 
 ### What the model can do
 
-The nine tools group into four capabilities:
+The ten tools group into five capabilities:
 
+- **Choose a model** — `select_model_profile` selects an approved route for the calling agent’s next step.
 - **Create a teammate** — `spawn_teammate` takes a name, a description, and the initial task; only the Lead can call it.
 - **Send messages** — `send_message` steers a running member at its nearest step boundary, starts or resumes an inactive member.
 - **See and wait** — `list_agents` returns each member’s `target` and availability; `wait_agent` waits for the next team change; `interrupt_agent` stops a teammate's current turn (Lead only).
@@ -91,11 +92,11 @@ The [Agent Teams Agent Note](../../../.agents/notes/implemented/feature/2026-08-
 
 | File | Role |
 |---|---|
-| [`src/index.ts`](src/index.ts) | Plugin entry: config, the fixed policy text, and the nine scoped tool registrations |
+| [`src/index.ts`](src/index.ts) | Plugin entry: config, the fixed policy text, and the ten scoped tool registrations |
 
 ### Policy and tools
 
-One `team:policy` section on the member scope states the shared coordination rules; the fixed text and the nine tool registrations are declared in [`src/index.ts`](src/index.ts). The nine tool schemas are registered in scopes recognized as Team members at publication. Scoped registrations with the same names as the legacy global continuable-subagent controls shadow those globals for team members only.
+One `team:policy` section on the member scope states the shared coordination rules; the fixed text and the ten tool registrations are declared in [`src/index.ts`](src/index.ts). The ten tool schemas are registered in scopes recognized as Team members at publication. Scoped registrations with the same names as the legacy global continuable-subagent controls shadow those globals for team members only.
 
 ### Scoped registration and teardown
 
@@ -117,6 +118,12 @@ Read these pages when the package-level contract is not enough. They move from t
 
 -----
 
+## Coding policy
+
+When `coding.decisions.enabled` is true, `coding_decide` adds optional decision advice through OpenRouter's Decisions API, separate from chat model profiles. It batches finite Choice questions, reports probabilities, confidence, model, usage and latency, and returns an uncertain result below `minConfidence`. Deadlines and per-turn call limits bound overhead; it does not retry failures or perform workflow actions. Images must be explicitly requested and already retained in the caller's durable session; filesystem paths and remote image URLs are not accepted. The request uses the configured credential reference without returning the value. Input and image byte limits apply before sending. Advice never completes tasks, bypasses permissions or replaces verification. Decision usage appears in its tool result and is separate from the chat model's token totals.
+
+The volatile `coding` configuration optionally requires `spawn_teammate` to name a ready `task_id` with nonempty Markdown sections Objective, Inputs, Scope, Acceptance, Verification, and Stop conditions. Its description joins the worker prompt. `model_profile` selects an approved `workerProfiles` route, otherwise `defaultWorkerProfile` applies; provider, model, reasoning effort and output cap are passed through native subagent options. With `requireTaskBrief`, only the Lead can complete a task and must supply nonempty verification evidence. `select_model_profile` changes the calling agent to an approved route at the next step after LLM configuration validation, without saving a global default; worker output caps do not change the caller’s output cap. These tools do not schedule assignments or verify evidence automatically.
+
 <a id="model-experience"></a>
 ## Model Experience
 
@@ -124,7 +131,7 @@ Read these pages when the package-level contract is not enough. They move from t
 
 #### What the model sees
 
-One shared system policy covers Team availability, shared-cwd safety, task coordination, Steer delivery, inbox acceptance, and the Lead’s duty to wait. All nine schemas are identical for Leads and teammates; execution enforces Lead-only operations. Required runtime context states `You are the Team Lead named "lead".` or `You are teammate "<name>".` with `Your Team Lead is named "lead".`, plus roster and messaging instructions. Identity comes from current Team membership, survives optional-context suppression, and is restored when compaction removes its snapshot. An ordinary fork from a teammate receives its current Lead identity.
+One shared system policy covers Team availability, shared-cwd safety, task coordination, Steer delivery, inbox acceptance, and the Lead’s duty to wait. All ten schemas are identical for Leads and teammates; execution enforces Lead-only operations. Required runtime context states `You are the Team Lead named "lead".` or `You are teammate "<name>".` with `Your Team Lead is named "lead".`, plus roster and messaging instructions. Identity comes from current Team membership, survives optional-context suppression, and is restored when compaction removes its snapshot. An ordinary fork from a teammate receives its current Lead identity.
 
 #### Token effect
 

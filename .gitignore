@@ -50,3 +50,9 @@ native/system/test/bin/
 
 # Generated company-signed CUA release record.
 /packages/experimental/cua-macos/cua-helper.json
+
+# Isolated local coding-profile state; never commit sessions or credentials.
+.coding-home/
+
+# Local code-index and assistant state.
+.serena/

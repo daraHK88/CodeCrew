@@ -681,6 +681,25 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     ],
   },
   {
+    key: 'codingSettings',
+    summary: 'Own global preferences independently of preset activation and agent lifetime.',
+    description: 'Own global preferences independently of preset activation and agent lifetime.',
+    methods: [
+      {
+        signature: 'skills(): SkillPolicy',
+        description: 'Read the global skill policy.',
+        parameters: [],
+        returns: 'the current immutable skill policy for every preset.',
+      },
+      {
+        signature: 'memory(): MemoryPolicy',
+        description: 'Read the global memory policy.',
+        parameters: [],
+        returns: 'the current immutable memory policy for every workspace.',
+      },
+    ],
+  },
+  {
     key: 'commands',
     summary: 'Human-command registry.',
     description: 'Human-command registry. Plain-context definitions are global; definitions registered through a command-injected child of an agent context shadow globals for that agent.',
@@ -2696,7 +2715,7 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         signature: '@Remote(\'selectModel\') selectModel(request: SessionSelectModelRequest): Promise<SessionSelectModelValue>',
         description: 'Select one Session-local model after explicitly resuming the Session; save the default in the background.',
         parameters: [{ name: 'request', description: 'Session identity and requested model selection.' }],
-        returns: 'the normalized selection installed for the Session, without waiting for default persistence.',
+        returns: 'the normalized selection installed for this Session; the global default is unchanged.',
       },
       {
         signature: '@Remote async initializeDefaultModel(): Promise<void>',
@@ -7132,6 +7151,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type McpResourceRequest = {\n    method: \'resources/list\' | \'resources/templates/list\';\n    cursor?: string;\n} | {\n    method: \'resources/read\';\n    uri: string;\n};',
   },
   {
+    name: 'MemoryPolicy',
+    declaration: 'export interface MemoryPolicy {\n    readonly enabled: boolean;\n    readonly globalFile: string;\n    readonly workspaceFile: string;\n    readonly maxBytes: number;\n}',
+  },
+  {
     name: 'Mergeability',
     declaration: 'export type Mergeability = \'mergeable\' | \'conflicting\' | \'unknown\';',
   },
@@ -8980,6 +9003,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface SkillLookupOptions {\n    readonly cwd?: string | undefined;\n    readonly signal?: AbortSignal | undefined;\n}',
   },
   {
+    name: 'SkillPolicy',
+    declaration: 'export interface SkillPolicy {\n    readonly enabled: boolean;\n    readonly maxSkills: number;\n    readonly maxBytes: number;\n    readonly catalogDescriptionMaxLength: number;\n    readonly rules: readonly {\n        readonly keywords: readonly string[];\n        readonly skills: readonly string[];\n    }[];\n}',
+  },
+  {
     name: 'SkillProvider',
     declaration: 'export interface SkillProvider {\n    readonly name: string;\n    readonly list: (options: SkillLookupOptions) => Promise<readonly SkillCandidate[] | SkillProviderObservation>;\n    readonly get: (candidate: SkillCandidate, options: SkillLookupOptions) => Promise<SkillDefinition | undefined>;\n}',
   },
@@ -9013,7 +9040,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'SpawnTeammateRequest',
-    declaration: 'export interface SpawnTeammateRequest {\n    readonly name: string;\n    readonly description: string;\n    readonly prompt: ContentBlock[];\n    readonly context: \'fresh\' | \'fork\';\n    readonly provider: string;\n    readonly signal: AbortSignal;\n}',
+    declaration: 'export interface SpawnTeammateRequest {\n    readonly agentOptions?: Partial<ModelSelection> & {\n        readonly maxTokens?: number;\n    };\n    readonly name: string;\n    readonly description: string;\n    readonly prompt: ContentBlock[];\n    readonly context: \'fresh\' | \'fork\';\n    readonly provider: string;\n    readonly signal: AbortSignal;\n}',
   },
   {
     name: 'SpawnTeammateResult',

@@ -390,6 +390,7 @@ vi.mock('../src/platform-view.ts', async importOriginal => ({
 }))
 vi.mock('../src/welcome-backend.ts', () => ({
   connectDesktopWelcome: async () => ({
+    requiresAccountSetup: async () => true,
     analyticsEnabled: async () => harness.analyticsEnabled,
     report: harness.analytics,
     readLocalePreference: async () => null,
@@ -616,7 +617,7 @@ describe('desktop main startup', () => {
     expect({ menu: [{ label: about!.label, role: about!.role }, separator], options: { ...options, iconPath: '<app icon>' } })
       .toEqual(expected[`${platform}:${locale}`])
     expect(options.iconPath).toBe(packaged ? join('desktop-test-resources', 'icon.png')
-      : join('desktop-test-app', 'resources', 'icon-windows.png'))
+      : join('desktop-test-app', 'resources', 'codecrew-mark.png'))
     if (platform !== 'win32') { expect(about!.click).toBeUndefined(); return }
     // Windows reuses the dimmed update dialog because Electron's fallback is a bare message box.
     harness.dialog.showMessageBox.mockResolvedValueOnce({ response: 0 })
@@ -624,7 +625,7 @@ describe('desktop main startup', () => {
     await vi.advanceTimersByTimeAsync(0)
     const zh = locale === 'zh-CN'
     expect(harness.dialog.showMessageBox).toHaveBeenLastCalledWith(expect.objectContaining({
-      type: 'info', title: zh ? '关于 DeepSeek Harness' : 'About DeepSeek Harness', message: 'DeepSeek Harness',
+      type: 'info', title: zh ? '关于 CodeCrew' : 'About CodeCrew', message: 'CodeCrew',
       detail: zh ? '版本 V1.0.0' : 'Version V1.0.0', buttons: [zh ? '确定' : 'OK'], cancelId: 0,
     }))
     // A dialog that cannot open is logged, not surfaced as an unhandled rejection.
@@ -1068,7 +1069,7 @@ describe('desktop main startup', () => {
     expect(() => handler(event, 'application', NaN, 34)).toThrow('invalid popup request')
     const application = handler(event, 'application', 48, 34)
     expect(harness.menu.buildFromTemplate.mock.lastCall![0].map(item => item.label ?? item.type)).toEqual([
-      '关于 DeepSeek Harness', 'separator', '检查更新…', '管理 dsh 命令…', 'separator', zh.toggleDevToolsMenu, 'separator', '退出',
+      '关于 CodeCrew', 'separator', '检查更新…', '管理 dsh 命令…', 'separator', zh.toggleDevToolsMenu, 'separator', '退出',
     ])
     expect(harness.popup.mock.lastCall![0]).toMatchObject({ window, x: 48, y: 34 })
     expect(harness.popup.mock.lastCall![0].callback).toBeTypeOf('function')

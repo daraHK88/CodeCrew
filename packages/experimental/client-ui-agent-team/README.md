@@ -72,6 +72,10 @@ The panel renders outside the conversation container and stays within the viewpo
 
 -----
 
+## Coding policy
+
+The task board also renders a live SVG dependency graph from durable task state, with status and owner labels. Independent tasks share a depth column; dependencies connect to later columns. The graph scrolls within a keyboard-focusable region and the detailed task cards remain available as the textual view. The graph visualizes state; it does not schedule work.
+
 <a id="model-experience"></a>
 ## Model Experience
 

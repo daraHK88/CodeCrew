@@ -17,6 +17,7 @@ import type { TranslateNS } from '@deepseek-ai/dsh-client-ui-slots'
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import { NS, type TeamKey } from './locales.ts'
 import css from './TeamAction.module.css'
+import { TaskGraph } from './TaskGraph.tsx'
 
 /** Business actions injected by the browser plugin. */
 export interface TeamActionInjected {
@@ -342,6 +343,7 @@ export function TeamAction({
                     : (
                       <>
                         <h3>{t('tasks')}<span className={css.count}>{team.tasks.length}</span></h3>
+                        <TaskGraph tasks={team.tasks} label={t('graph')} />
                         <div className={css.tasks}>
                           {team.tasks.map(task => <TaskCard key={task.id} task={task} t={t} />)}
                         </div>

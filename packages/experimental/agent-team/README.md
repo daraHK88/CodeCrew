@@ -167,6 +167,10 @@ Read these pages when the package-level contract is not enough. They move from t
 
 -----
 
+## Coding policy
+
+`SpawnTeammateRequest.agentOptions` optionally supplies the native provider, model, reasoning effort and output limit for the new worker. The roster forwards these options to the subagent provider; native model validation and durable selection recording remain authoritative.
+
 <a id="model-experience"></a>
 
 ### Browser projection

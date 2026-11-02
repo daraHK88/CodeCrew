@@ -185,6 +185,8 @@ macOS and Linux GUI launches inherit only the session manager's environment, wit
 
 ## Develop
 
+Coding profiles with the global `coding-settings` namespace use the main workspace and provider settings directly, without official-account welcome requests or subscriptions. The macOS development bundle is named CodeCrew, uses its own URL scheme, and persists an explicitly selected primary runtime in its Finder launcher. `DSH_DESKTOP_PRIMARY_RUNTIME_DIR` may select an existing payload; the development launcher verifies it instead of downloading another copy. See the [CodeCrew run guide](../../coding/README.md) for the local shortcut and data locations.
+
 The development application menu offers Reload Page (Cmd+R on macOS, Ctrl+R elsewhere) and Restart App and Host. Restart waits for Host shutdown before relaunching Electron and starting a new Host; neither action rebuilds source files.
 
 `dev:desktop` builds the current Host, client bundles, Web frontend, and Electron shell, projects the built CLI and private Desktop Host packages with their workspace dependencies into a disposable desktop npm project, and launches Electron without resolving dsh from npm:

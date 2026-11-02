@@ -104,6 +104,10 @@ Read these pages when the package-level contract is not enough. They move from t
 
 -----
 
+## Coding policy
+
+Optional automatic selection uses local case-insensitive keyword rules; the first matching rule wins without a classifier request. It applies to fresh user or agent-assignment input, yields to explicit skill invocations, and adds only complete visible model-invocable skills within `maxSkills` and `maxBytes`. Each loaded body is a durable `user/message` with source `skill-automatic`. Global `codingSettings.skills()` takes precedence over the local volatile `automatic` policy; unmatched work retains manual skill access. The byte cap applies to automatic loading, not explicit tool results.
+
 <a id="model-experience"></a>
 ## Model Experience
 

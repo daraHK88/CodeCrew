@@ -1,13 +1,13 @@
 {
   "name": "@deepseek-ai/dsh-tool-schedule",
   "description": "Model-facing scheduled task tools (schedule_create, schedule_list, schedule_view, schedule_edit) over the Host ctx.schedule service",
-  "version": "0.2.2-alpha.2",
+  "version": "0.2.2",
   "publishConfig": {
     "access": "public"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/deepseek-ai/deepseek-harness.git",
+    "url": "git+https://github.com/daraHK88/CodeCrew.git",
     "directory": "packages/schedule/tool-schedule"
   },
   "type": "module",

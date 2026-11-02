@@ -167,6 +167,10 @@ Mailbox 投影与 checkpoint 准入保留本地声明的校验器之外获准内
 
 -----
 
+## 编码策略
+
+`SpawnTeammateRequest.agentOptions` 可为新 worker 指定原生提供方、模型、推理强度和输出限制。成员表将这些选项传给 subagent 提供方；模型有效性检查和持久选择记录仍由原生实现负责。
+
 <a id="model-experience"></a>
 
 ### 浏览器投影

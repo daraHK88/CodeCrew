@@ -6,6 +6,7 @@ import { desktopAccountBackend, type DesktopAccountBackend } from './account-bac
 
 /** Metadata needed before the native entry or workspace becomes visible. */
 export interface WelcomeState {
+  readonly accountSetupRequired?: boolean
   readonly loggedIn: boolean
   readonly hasApiKey: boolean
   readonly writable: boolean
@@ -14,6 +15,10 @@ export interface WelcomeState {
 
 /** Narrow operations available to the native welcome flow. */
 export interface DesktopWelcomeBackend {
+  /** Report whether this profile uses the official account entry.
+   * @returns false for profiles exposing global Coding settings.
+   */
+  requiresAccountSetup(): Promise<boolean>
   /** @returns the current Host policy; every read observes live configuration. */
   analyticsEnabled(): Promise<boolean>
   readonly account: DesktopAccountBackend
@@ -92,6 +97,7 @@ export async function connectDesktopWelcome(
     const providers = await invoke({ namespace: 'llm', method: 'listConfigurableProviders', args: {} })
     if (!Array.isArray(providers)) throw new Error('desktop welcome: invalid provider directory')
     const namespaces = settings.namespaces
+    const coding = namespaces.some((item: unknown) => record(item) && item.ns === 'coding-settings')
     const refs = providers.flatMap((provider: unknown) => {
       if (!record(provider) || typeof provider.settingsNs !== 'string' || !Array.isArray(provider.settingsPath)) {
         throw new Error('desktop welcome: invalid provider settings address')
@@ -114,7 +120,8 @@ export async function connectDesktopWelcome(
     }
     if (ref !== undefined && !record(states[ref])) throw new Error('desktop welcome: missing credential metadata')
     return {
-      loggedIn: (await account.state()).status === 'credential-stored',
+      ...coding ? { accountSetupRequired: false } : {},
+      loggedIn: !coding && (await account.state()).status === 'credential-stored',
       hasApiKey: Object.values(states).some(value => record(value) && value.configured === true),
       writable: ref !== undefined && record(states[ref]) && states[ref].writable === true,
       localePreference: localePreference(namespaces),
@@ -123,6 +130,10 @@ export async function connectDesktopWelcome(
   return {
     account,
     read,
+    async requiresAccountSetup() {
+      const { settings } = await settingsAndReference()
+      return !settings.namespaces.some((item: unknown) => record(item) && item.ns === 'coding-settings')
+    },
     async analyticsEnabled() {
       const enabled = await invoke({ namespace: 'productAnalytics', method: 'enabled', args: {} }, AbortSignal.timeout(1000))
       if (typeof enabled !== 'boolean') throw new Error('desktop analytics: invalid collection policy')

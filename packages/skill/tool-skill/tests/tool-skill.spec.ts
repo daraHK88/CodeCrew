@@ -55,7 +55,7 @@ async function writeSkill(root: string, name: string, description: string, body:
   await writeFile(join(dir, 'SKILL.md'), `---\nname: ${name}\ndescription: ${description}\n---\n\n${body}\n`)
 }
 
-async function setup(home: string, config: toolSkill.Config = {}): Promise<Context> {
+async function setup(home: string, config: object = {}): Promise<Context> {
   const ctx = new Context()
   provideWorkingDirectoryFixture(ctx, home)
   await ctx.plugin(SystemPrompt)
@@ -65,7 +65,7 @@ async function setup(home: string, config: toolSkill.Config = {}): Promise<Conte
   await ctx.plugin(AgentRegistry)
   await ctx.plugin(SkillRegistry)
   await ctx.plugin(SkillFileSystem, { dshHome: join(home, '.dsh'), agentsHome: join(home, '.agents'), watch: false })
-  await ctx.plugin(toolSkill, config)
+  await ctx.plugin(toolSkill, config as never)
   return ctx
 }
 
@@ -1227,5 +1227,44 @@ describe('user-explicit invocation injection', () => {
       .filter(message => (message.source as { kind?: string }).kind === 'skill-invocation')
       .map(message => (message.source as { name: string }).name)
     expect(invoked).toEqual(['shared-skill'])
+  })
+})
+
+
+describe('automatic coding skills', () => {
+  it('loads a matched skill without a model tool call and does not repeat it on continuation', async () => {
+    const home = await tempDir('automatic')
+    await writeSkill(join(home, '.agents', 'skills'), 'debugging', 'Debug failures', 'Find the cause before editing.')
+    const ctx = await setup(home, { automatic: { enabled: true, maxSkills: 1, maxBytes: 4096, rules: [{ keywords: ['investigate'], skills: ['debugging'] }] } })
+    const owner = agentForCwd(home)
+    const decision = await proposeStep(ctx, owner, [createUserMessage({ content: [{ type: 'text', text: 'Investigate the failing login test' }], source: { kind: 'user' } })])
+    if (decision.kind !== 'enter') throw new Error('expected enter')
+    expect(decision.messages.filter(message => message.source.kind === 'skill-automatic')).toHaveLength(1)
+    expect(JSON.stringify(decision.messages)).toContain('Find the cause before editing.')
+    const continuation = await proposeStep(ctx, owner, [])
+    if (continuation.kind !== 'enter') throw new Error('expected enter')
+    expect(continuation.messages.some(message => message.source.kind === 'skill-automatic')).toBe(false)
+  })
+
+  it('keeps exact UI edits free of unrelated skills and respects the complete-body budget', async () => {
+    const home = await tempDir('automatic-budget')
+    await writeSkill(join(home, '.agents', 'skills'), 'designing', 'Design pages', 'A'.repeat(500))
+    const ctx = await setup(home, { automatic: { enabled: true, maxSkills: 1, maxBytes: 100, rules: [{ keywords: ['redesign'], skills: ['designing'] }] } })
+    for (const text of ['Change the button color to red', 'Redesign this page']) {
+      const decision = await proposeStep(ctx, agentForCwd(home), [createUserMessage({ content: [{ type: 'text', text }], source: { kind: 'user' } })])
+      if (decision.kind !== 'enter') throw new Error('expected enter')
+      expect(decision.messages.some(message => message.source.kind === 'skill-automatic')).toBe(false)
+    }
+  })
+
+  it('never automatically loads a skill disabled for model invocation', async () => {
+    const home = await tempDir('automatic-private')
+    await writeSkill(join(home, '.agents', 'skills'), 'private-skill', 'Private', 'Do not auto-load.')
+    const file = join(home, '.agents', 'skills', 'private-skill', 'SKILL.md')
+    await writeFile(file, '---\nname: private-skill\ndescription: Private\ndisable-model-invocation: true\n---\nDo not auto-load.')
+    const ctx = await setup(home, { automatic: { enabled: true, maxSkills: 1, maxBytes: 4096, rules: [{ keywords: ['private'], skills: ['private-skill'] }] } })
+    const decision = await proposeStep(ctx, agentForCwd(home), [createUserMessage({ content: [{ type: 'text', text: 'private' }], source: { kind: 'user' } })])
+    if (decision.kind !== 'enter') throw new Error('expected enter')
+    expect(decision.messages.some(message => message.source.kind === 'skill-automatic')).toBe(false)
   })
 })

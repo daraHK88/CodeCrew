@@ -1,77 +1,41 @@
-# DeepSeek Harness
+# CodeCrew
 
 English | [中文](README.zh.md)
 
-DeepSeek Harness (`dsh`) is an open-source agent harness developed by [DeepSeek AI](https://deepseek.com).
+<img src="coding/brand/codecrew-mark.png" alt="CodeCrew code and AI mark" width="120" height="120">
 
-It is built on an **everything-is-a-plugin** architecture and powered by [Cordis](https://github.com/cordiverse/cordis), whose design is described in [_A Programming Paradigm for Spatiotemporal Composability_](https://arxiv.org/abs/2608.25512).
+CodeCrew is a coding-focused fork of [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness). It combines editable model profiles, supervised agents, automatic skill selection, and general and workspace memory.
 
-Documentation: [https://deepseek-harness.github.io/deepseek-harness/](https://deepseek-harness.github.io/deepseek-harness/)
+- Choose global defaults and separate reader, implementer, planner, reviewer, and decision advisor models in Settings → Coding.
+- Handle small changes directly. Delegate substantial work with scoped task briefs, dependencies, concurrent workers, and supervisor verification.
+- Load relevant skills through local rules and restore retained memory snapshots after session compaction.
+- Ask the optional OpenRouter Jev advisor bounded questions, including questions about retained image attachments.
 
-## Developer preview
+<a id="run"></a>
 
-DeepSeek Harness is in _developer preview_ and iterating rapidly. **THERE WILL BE COMPATIBILITY-BREAKING CHANGES.**
+<a id="run-from-source"></a>
 
-Review the [safety notice](SAFETY.md) before running the project.
+## Run from source
 
-## Run
-
-### Run from `npm`
-
-Install `Node.js`, then run:
-
-```sh
-npx @deepseek-ai/dsh web
-```
-
-The command starts the Web UI at `http://127.0.0.1:3080` by default and opens it in the default browser for a local launch. An SSH launch only prints the host URL because the SSH client or editor owns the local forwarded address. Pass `--no-open` to run the server without opening a browser. See [Web UI guide](docs/user/guide/index.md).
-
-### Run from source
-
-To run from a repository checkout:
+Use Node.js 24.9 or newer and the pnpm version declared in `package.json`.
 
 ```sh
-git clone https://github.com/deepseek-ai/deepseek-harness.git
-cd deepseek-harness
-pnpm install
+git clone https://github.com/daraHK88/CodeCrew.git
+cd CodeCrew
+pnpm install --frozen-lockfile
 pnpm run build
-pnpm dsh web
+node coding/setup.mjs
+DSH_HOME="$PWD/.coding-home" node --import tsx/esm apps/cli/src/bin.ts coding --no-open
 ```
 
-`pnpm run build` prepares the repository artifacts. `pnpm dsh web` uses those built artifacts without rebuilding.
+Open the authenticated URL printed by the launcher. See the [setup guide](coding/README.md) for the desktop app, providers, memory, and model routing. Local settings and sessions live in the ignored `.coding-home` directory.
 
-## Community and support
-
-- Submit feedback or bug reports through [GitHub Discussions](https://github.com/deepseek-ai/deepseek-harness/discussions).
-- Add the [`dsh-plugin`](https://github.com/topics/dsh-plugin) topic to your plugin repository for discoverability.
-- Join <a href="https://discord.gg/4MrtZUhpxg">DeepSeek Harness Discord community</a>.
-
-## Contributing
-
-See [CONTRIBUTING.md](CONTRIBUTING.md).
+There is no published CodeCrew npm package or standalone installer. Provider authentication must be configured before using its models; supported login methods depend on the provider. Review the [safety notice](SAFETY.md) before running coding agents.
 
 ## Development
 
-Start with the [development guide](docs/development.md) and [architecture documentation](docs/architecture.md).
+The project retains upstream package names and its Cordis plugin architecture. Start with the [development guide](docs/development.md), [architecture](docs/architecture.md), and [agent instructions](AGENTS.md). Report CodeCrew issues in [this repository](https://github.com/daraHK88/CodeCrew/issues).
 
-`pnpm run dev:web` builds, serves, and rebuilds client bundles on source edits in one terminal, and `make help` lists the matching Make targets for Web and Desktop; the guide's application commands section owns the full table.
+## License and attribution
 
-For agents, follow [AGENTS.md](AGENTS.md).
-
-## Citation
-
-```bibtex
-@misc{deepseek-harness2026,
-  title={DeepSeek Harness: Everything is a Plugin},
-  author={DeepSeek-AI},
-  year={2026},
-  publisher={GitHub},
-  howpublished={\url{https://github.com/deepseek-ai/deepseek-harness}},
-}
-```
-
-## License
-
-[MIT](LICENSE)
-
-Third-party dependencies and their licenses are disclosed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+[MIT](LICENSE). CodeCrew builds on DeepSeek AI's DeepSeek Harness and retains its copyright notices. Third-party licenses are listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

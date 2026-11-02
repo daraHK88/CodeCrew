@@ -125,6 +125,7 @@ vi.mock('../src/host-process.ts', () => ({
 }))
 vi.mock('../src/welcome-backend.ts', () => ({
   connectDesktopWelcome: async () => ({
+    requiresAccountSetup: async () => true,
     analyticsEnabled: async () => false,
     readLocalePreference: async () => state.preference,
     read: async () => {

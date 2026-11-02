@@ -77,11 +77,14 @@ export interface Config {
 ## `@deepseek-ai/dsh-agent-instructions`
 
 - `inject`: `agents` · `workingDirectory`
-- `source`: [`packages/context/agent-instructions/src/config.ts:18`](../packages/context/agent-instructions/src/config.ts)
+- `refs`: `Volatile` (`@deepseek-ai/cordis`)
+- `source`: [`packages/context/agent-instructions/src/config.ts:20`](../packages/context/agent-instructions/src/config.ts)
 
 ```ts config-catalog
 /** User-facing workspace instruction loader configuration. */
 export interface Config {
+  /** Global and workspace memory, refreshed automatically without model requests. */
+  memory?: Volatile<MemorySettings>
   /** Directory entries that identify the project root while walking upward from the current working directory. */
   projectRootMarkers?: string[]
   /**
@@ -102,6 +105,18 @@ export interface Config {
    * under the same per-directory trimmed-content dedup; empty disables the overlay.
    */
   localInstructionFileCandidates?: string[]
+}
+
+/** Live memory settings; workspace paths are confined to the selected working directory. */
+export interface MemorySettings {
+  /** Include bounded memory snapshots in model context. */
+  enabled: boolean
+  /** General memory path; empty selects the current home’s memory/USER.md. */
+  globalFile: string
+  /** Workspace-relative memory path, confined to the current working directory. */
+  workspaceFile: string
+  /** Total UTF-8 byte budget for serialized memory sections. */
+  maxBytes: number
 }
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-agent-instructions -->
@@ -883,7 +898,7 @@ export interface Config {
 ## `@deepseek-ai/dsh-experimental-agent-team`
 
 - `inject`: `agents` · `sessions` · `sessionPersistence` · `sessionProjections` · `subagents`
-- `source`: [`packages/experimental/agent-team/src/types.ts:153`](../packages/experimental/agent-team/src/types.ts)
+- `source`: [`packages/experimental/agent-team/src/types.ts:154`](../packages/experimental/agent-team/src/types.ts)
 
 ```ts config-catalog
 /** Team-service deployment limits. */
@@ -1438,17 +1453,68 @@ export interface Config {
 ## `@deepseek-ai/dsh-experimental-tool-agent-team`
 
 - `inject`: `agents` · `agentTeams` · `tools` · `systemPrompt`
-- `source`: [`packages/experimental/tool-agent-team/src/index.ts:17`](../packages/experimental/tool-agent-team/src/index.ts)
+- `refs`: `Volatile` (`@deepseek-ai/cordis`)
+- `source`: [`packages/experimental/tool-agent-team/src/index.ts:47`](../packages/experimental/tool-agent-team/src/index.ts)
 
 ```ts config-catalog
 /** Tool routing configuration. */
 export interface Config {
+  /** Global worker routes and delegation requirements, editable in Settings. */
+  readonly coding?: Volatile<CodingTeamSettings>
   /** Register `interrupt_agent` and its policy guidance. Defaults to true; false leaves the domain API available. */
   readonly interrupt?: boolean
   /** Continuable-subagent provider used for fresh teammates. */
   readonly freshProvider?: string
   /** Continuable-subagent provider used for completed-prefix fork teammates. */
   readonly forkProvider?: string
+}
+
+/** Live global coding-team preferences. */
+export interface CodingTeamSettings {
+  /** Optional bounded OpenRouter decision advisor settings. */
+  decisions?: DecisionSettings
+  /** Require a ready task with a complete coding brief before spawning a worker. */
+  requireTaskBrief: boolean
+  /** Approved profile used when an assignment omits its model profile. */
+  defaultWorkerProfile: string
+  /** Named model routes available to the supervisor and workers. */
+  workerProfiles: Record<string, WorkerProfile>
+}
+
+/** Global limits for optional structured decision advice. */
+export interface DecisionSettings {
+  /** Register the optional decision advisor tool. */
+  enabled: boolean
+  /** OpenRouter Decisions model identifier. */
+  model: string
+  /** Credential reference or environment name holding the OpenRouter API key. */
+  apiKeyEnv: string
+  /** Deadline in milliseconds for one decision request. */
+  timeoutMs: number
+  /** Minimum accepted confidence; lower scores return uncertainty. */
+  minConfidence: number
+  /** Maximum UTF-8 bytes of serialized question text. */
+  maxTextBytes: number
+  /** Maximum combined bytes of retained image attachments. */
+  maxImageBytes: number
+  /** Maximum decision requests admitted during one agent turn. */
+  maxCallsPerTurn: number
+  /** Maximum finite questions in one request. */
+  maxQuestions: number
+  /** Maximum choices for each question. */
+  maxOptions: number
+}
+
+/** One user-approved worker route, independent of the Lead model. */
+export interface WorkerProfile {
+  /** Provider identifier for the worker model. */
+  provider: string
+  /** Model identifier within the selected provider. */
+  model: string
+  /** Optional provider-supported reasoning effort. */
+  reasoningEffort?: string
+  /** Optional maximum output tokens for the worker. */
+  maxTokens?: number
 }
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-experimental-tool-agent-team -->
@@ -4272,13 +4338,33 @@ export interface Config {
 ## `@deepseek-ai/dsh-tool-skill`
 
 - `inject`: `agents` · `tools` · `skills` · `workingDirectory`
-- `source`: [`packages/skill/tool-skill/src/index.ts:64`](../packages/skill/tool-skill/src/index.ts)
+- `refs`: `Volatile` (`@deepseek-ai/cordis`)
+- `source`: [`packages/skill/tool-skill/src/index.ts:83`](../packages/skill/tool-skill/src/index.ts)
 
 ```ts config-catalog
 /** Model-facing skill catalog configuration. */
 export interface Config {
+  /** Automatically load permitted skills for a newly admitted user or teammate assignment. */
+  automatic?: Volatile<AutomaticSkillSettings>
   /** Maximum normalized description length rendered in the session catalog; minimum 3. */
   catalogDescriptionMaxLength?: number
+}
+
+/** Bounded, local skill selection rules; first matching rule wins. */
+export interface AutomaticSkillSettings {
+  /** Load permitted skill instructions when a local rule matches. */
+  enabled: boolean
+  /** Maximum complete skills loaded for one assignment. */
+  maxSkills: number
+  /** Total UTF-8 budget for automatically loaded skill instructions. */
+  maxBytes: number
+  /** Ordered local phrase rules; the first matching rule is used. */
+  rules: {
+    /** Case-insensitive phrases matched against the admitted assignment. */
+    keywords: string[]
+    /** Skill names tried in order within the visibility and size limits. */
+    skills: string[]
+  }[]
 }
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-tool-skill -->

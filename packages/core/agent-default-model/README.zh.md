@@ -96,6 +96,10 @@ await ctx.agentDefaultModel.saveSelection({ provider, model, reasoningEffort: 'h
 
 -----
 
+## 编码策略
+
+`@deepseek-ai/dsh-agent-default-model/coding-settings` 提供全局 `ctx.codingSettings` 服务，其生命周期独立于 agent preset。动态 `skills` 和 `memory` 配置由 preset 内的消费者读取；`skills()` 和 `memory()` 返回当前只读策略。Coding 设置页编辑这些全局值，而聊天模型选择仅作用于当前 Session。配置和运行方式见 [coding profile](../../../coding/README.zh.md)。
+
 <a id="model-experience"></a>
 ## 模型体验
 

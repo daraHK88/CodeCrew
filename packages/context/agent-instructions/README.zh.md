@@ -124,6 +124,10 @@ export interface Config {
 
 -----
 
+## 编码策略
+
+可选记忆加载在获准执行步骤时读取通用文件和当前工作区摘要。全局 `codingSettings.memory()` 策略优先于本地 `memory` 配置。快照以持久 `user/message` 输入记录：保留时去重，文件变化后刷新，被压缩移除后重新加载。工作区路径在解析符号链接后仍须位于当前工作目录内。缺失文件可忽略；超出总字节预算的文件整体省略。此读取器不写入或总结记忆。路径和限制见 [coding profile](../../../coding/README.zh.md)。
+
 <a id="model-experience"></a> <a id="prompt-shape"></a>
 ## 模型体验
 

@@ -1,5 +1,5 @@
 ---
-description: "九个让模型创建、发消息与协调 teammate 的工具，供挂载实验性 Team 插件的组合使用。"
+description: "十个让模型创建、发消息与协调 teammate 的工具，供挂载实验性 Team 插件的组合使用。"
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-本包让模型创建具名 teammate、向它们发送消息、查看可用状态、等待进展、中断卡住的工作，并通过共享任务板协调。每个团队成员都会获得相同的九个工具，以及在共享工作区协调的指引。它会取代同名的旧版 subagent 控件，因此同时需要两者的组合必须禁用旧定义。本包以实验性名称公开发布，但不提供稳定性保证。
+本包让模型创建具名 teammate、向它们发送消息、查看可用状态、等待进展、中断卡住的工作，并通过共享任务板协调。每个团队成员都会获得相同的十个工具，以及在共享工作区协调的指引。它会取代同名的旧版 subagent 控件，因此同时需要两者的组合必须禁用旧定义。本包以实验性名称公开发布，但不提供稳定性保证。
 
 ## 目录
 
@@ -25,7 +25,7 @@ kind: "package-reference"
 <a id="use-this-package"></a>
 ## 使用本包
 
-当模型应该通过工具运行一支团队时，在 `@deepseek-ai/dsh-experimental-agent-team` 之上挂载本包。挂载后，每个团队成员——Lead 与每个 teammate——都会获得相同的九个工具，以及相同的协作策略。`spawn_teammate` 原样发送初始任务；每个成员通过必需的 runtime context 接收当前角色和名字。
+当模型应该通过工具运行一支团队时，在 `@deepseek-ai/dsh-experimental-agent-team` 之上挂载本包。挂载后，每个团队成员——Lead 与每个 teammate——都会获得相同的十个工具，以及相同的协作策略。`spawn_teammate` 发送初始任务，并可加入必需的任务描述；每个成员通过必需的 runtime context 接收当前角色和名字。
 
 ### 何时选择
 
@@ -54,8 +54,9 @@ kind: "package-reference"
 
 ### 模型能做什么
 
-九个工具分为四类能力：
+十个工具分为五类能力：
 
+- **选择模型**——`select_model_profile` 为调用 agent 的下一步选择获准路由。
 - **创建 teammate**——`spawn_teammate` 接收名字、描述与初始任务；只有 Lead 可以调用它。
 - **发送消息**——`send_message` 在最近的步骤边界对运行中的成员进行 steering（中途引导）、启动或恢复非活动成员。
 - **查看与等待**——`list_agents` 返回各成员的 `target` 与可用状态；`wait_agent` 等待下一次团队变化；`interrupt_agent` 停止 teammate 的当前轮次（仅限 Lead）。
@@ -91,11 +92,11 @@ kind: "package-reference"
 
 | 文件 | 职责 |
 |---|---|
-| [`src/index.ts`](src/index.ts) | 插件入口：配置、固定策略文本与九个 scoped 工具注册 |
+| [`src/index.ts`](src/index.ts) | 插件入口：配置、固定策略文本与十个 scoped 工具注册 |
 
 ### 策略与工具
 
-member scope 上的一个 `team:policy` 段落说明共享的协作规则；固定文本与九个工具注册都声明在 [`src/index.ts`](src/index.ts)。九个工具 schema 注册在发布时被识别为 Team member 的 scope 中。与旧全局 continuable-subagent 控件同名的 scoped 注册只会为团队成员覆盖这些全局控件。
+member scope 上的一个 `team:policy` 段落说明共享的协作规则；固定文本与十个工具注册都声明在 [`src/index.ts`](src/index.ts)。十个工具 schema 注册在发布时被识别为 Team member 的 scope 中。与旧全局 continuable-subagent 控件同名的 scoped 注册只会为团队成员覆盖这些全局控件。
 
 ### 按作用域注册与拆除
 
@@ -117,6 +118,14 @@ member scope 上的一个 `team:policy` 段落说明共享的协作规则；固�
 
 -----
 
+<a id="coding-policy"></a>
+
+## 编码策略
+
+启用 `coding.decisions.enabled` 后，`coding_decide` 通过 OpenRouter Decisions API 提供可选决策建议，与聊天模型配置分离。它批量处理有限 Choice 问题，返回概率、置信度、模型、用量和延迟；低于 `minConfidence` 时返回不确定结果。超时和每轮调用上限限制开销，不自动重试失败或执行工作流动作。图像须显式请求，且已保留在调用者的持久会话中；不接受文件系统路径或远程图像 URL。请求使用配置的凭据引用，不返回密钥值。发送前检查文本和图像字节上限。建议不会完成任务、绕过权限或替代验证。决策用量显示在工具结果中，不计入聊天模型的 token 总量。
+
+动态 `coding` 配置可要求 `spawn_teammate` 指定就绪的 `task_id`，且任务须包含非空 Markdown 节：Objective、Inputs、Scope、Acceptance、Verification 和 Stop conditions。任务描述加入 worker 提示词。`model_profile` 选择获准的 `workerProfiles` 路由，否则采用 `defaultWorkerProfile`；提供方、模型、推理强度和输出上限通过原生 subagent 选项传入。启用 `requireTaskBrief` 时，仅 Lead 能完成任务，并须提供非空验证证据。`select_model_profile` 经 LLM 配置验证后，在下一步为调用 agent 选择获准路由，不保存全局默认值；worker 输出限制不改变调用者的输出限制。这些工具不自动调度任务或验证证据。
+
 <a id="model-experience"></a>
 ## 模型体验
 
@@ -124,7 +133,7 @@ member scope 上的一个 `team:policy` 段落说明共享的协作规则；固�
 
 #### 模型看到什么
 
-共享系统 policy 覆盖 Team 可用性、共享 cwd 安全、任务协调、Steer 投递、inbox 接收和 Lead 等待责任。Lead 与 teammate 使用相同的九个 schema；执行时落实 Lead-only 操作。必需的 runtime context 声明 `You are the Team Lead named "lead".`，或 `You are teammate "<name>".` 与 `Your Team Lead is named "lead".`，并提供 roster 和消息操作说明。身份来自当前 Team membership，关闭可选 context 时仍保留，压缩移除快照后会恢复。从 teammate 创建的普通 fork 会收到当前 Lead 身份。
+共享系统 policy 覆盖 Team 可用性、共享 cwd 安全、任务协调、Steer 投递、inbox 接收和 Lead 等待责任。Lead 与 teammate 使用相同的十个 schema；执行时落实 Lead-only 操作。必需的 runtime context 声明 `You are the Team Lead named "lead".`，或 `You are teammate "<name>".` 与 `Your Team Lead is named "lead".`，并提供 roster 和消息操作说明。身份来自当前 Team membership，关闭可选 context 时仍保留，压缩移除快照后会恢复。从 teammate 创建的普通 fork 会收到当前 Lead 身份。
 
 #### Token 影响
 

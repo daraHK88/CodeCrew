@@ -1,0 +1,8 @@
+Use case: logo-brand
+Asset type: primary app logomark for CodeCrew, a professional AI coding team.
+Primary request: Create one original, exceptionally simple and professional logo symbol that communicates both software code and coordinated AI intelligence.
+Subject: a single compact geometric emblem. Integrate two bold opposing code angle brackets with a minimal connected-node slash between them; the central slash consists of just three solid nodes linked into one clean diagonal gesture, suggesting an AI crew working together. Treat the elements as one unified, carefully balanced mark rather than separate clip-art.
+Style: crisp flat vector-like geometry, consistent substantial strokes, restrained corners, excellent optical spacing and balanced negative space. Monochrome dark graphite; strong silhouette that remains readable as a small application icon.
+Composition: one centered isolated mark, square canvas, generous but practical clear space, large legible emblem.
+Background: genuinely transparent alpha.
+Constraints: symbol only, no lettering, no wordmark, no slogan. No robot heads, brains, circuit-board maze, decorative stars, gradients, shadows, textures, glow, 3D, mockup, border tile, multiple variants or watermark. The result must feel precise and calm, suitable for a serious developer tool.

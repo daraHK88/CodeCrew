@@ -61,6 +61,8 @@ export type WelcomeApi = DesktopLocale & WelcomeOperations & {
 
 /** Authentication facts supplied at cold start or after a completed sign-out. */
 export interface WelcomeAuthentication {
+  /** Coding profiles configure providers in Settings instead of the official account entry. */
+  readonly accountSetupRequired?: boolean
   readonly loggedIn: boolean
   readonly hasApiKey: boolean
 }
@@ -71,5 +73,5 @@ export interface WelcomeAuthentication {
  * @returns true only when neither authentication route is configured.
  */
 export function needsWelcome(authentication: WelcomeAuthentication): boolean {
-  return !authentication.loggedIn && !authentication.hasApiKey
+  return authentication.accountSetupRequired !== false && !authentication.loggedIn && !authentication.hasApiKey
 }

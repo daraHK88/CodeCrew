@@ -11,7 +11,7 @@ kind: "package-reference"
 
 ## 概述
 
-`dsh-client-ui-settings-models` 是 dsh Web 客户端的 Models 设置页面：用户可以配置 API 密钥（以只写方式存入 profile 的凭据引用之下）、编辑每个提供商的模型列表，并手工声明自定义 pi-ai 路由；页面以提供商行展示，一次只展开一张编辑卡片。该页面把提供商目录、设置文档与凭据描述合并为一个共享快照，因此行的状态在三个方面始终一致。它还会带首次运行的用户走两个有序弹窗——版本化预览版说明，以及按条件显示的官方 DeepSeek 凭据步骤。
+`dsh-client-ui-settings-models` 是 dsh Web 客户端的 Models 设置页面：用户可以配置 API 密钥（以只写方式存入 profile 的凭据引用之下）、编辑每个提供商的模型列表，并手工声明自定义 pi-ai 路由；页面以提供商行展示，一次只展开一张编辑卡片。该页面把提供商目录、设置文档与凭据描述合并为一个共享快照，因此行的状态在三个方面始终一致。它还会带首次运行的用户走两个有序弹窗——版本化欢迎说明，以及按条件显示的官方 DeepSeek 凭据步骤。
 
 ## 目录
 
@@ -101,7 +101,7 @@ Models 页面包含 **DeepSeek 账号**（`deepseek-account`，英文为 **DeepS
 
 ### 引导协调器
 
-预览版说明在 `src/client/locales.ts` 中持有精确文案，并在 `src/onboarding-copy.ts` 中持有确认版本。认证浏览器通过共享配置表单比较并写入 `ui-settings-general.welcomeNoticeVersion`；只有显式点击「继续」才会记录当前版本；命名空间不可用或写入被拒时，声明保持未确认状态。已确认旧版的用户会再次看到当前说明。DeepSeek 步骤面向 `llm-deepseek` 中的 `deepseek-official`，在共享引导模态框内以仅凭据模式渲染既有 `ProviderEditor`；`credentials.set` 仍是唯一的机密写入，且不改变任何提供商设置。
+欢迎说明在 `src/client/locales.ts` 中持有精确文案，并在 `src/onboarding-copy.ts` 中持有确认版本。认证浏览器通过共享配置表单比较并写入 `ui-settings-general.welcomeNoticeVersion`；只有显式点击「继续」才会记录当前版本；命名空间不可用或写入被拒时，声明保持未确认状态。已确认旧版的用户会再次看到当前说明。DeepSeek 步骤面向 `llm-deepseek` 中的 `deepseek-official`，在共享引导模态框内以仅凭据模式渲染既有 `ProviderEditor`；`credentials.set` 仍是唯一的机密写入，且不改变任何提供商设置。
 
 </details>
 
@@ -121,6 +121,10 @@ Models 页面包含 **DeepSeek 账号**（`deepseek-account`，英文为 **DeepS
 -----
 
 `settings.models.sign-in` 插槽让账号登录在凭证编辑器之前提供选择；没有贡献者时直接显示编辑器。关闭账号选择弹窗会结束整个引导步骤。从账号菜单显式重新打开时，即使已有提供者配置，也会进入同一个编辑器。
+
+## 编码策略
+
+挂载全局 `coding-settings` 插件时，Settings 提供 Coding 页面，用于设置全局默认模型、获准 worker 路由、任务范围策略、自动技能、记忆和并行工具调用。模型选项来自实时提供方目录。每次修改均通过现有受版本保护的配置表单保存，并显示保存中、成功或失败状态。聊天内模型选择不保存此全局默认值。
 
 <a id="model-experience"></a>
 ## 模型体验

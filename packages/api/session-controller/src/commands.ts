@@ -160,11 +160,6 @@ export class SessionCommandController {
         }
         await this.ctx.llm.resolveCallConfig(selected)
         agent.model.select(selected)
-        void this.ctx.agentDefaultModel.saveSelection(selected).catch((error: unknown) => {
-          this.ctx.logger.warn(
-            `session-controller: model selection changed for the Session but the default was not saved: ${String(error)}`,
-          )
-        })
         return { selected: { ...selected } }
       } catch (error) {
         if (remoteErrorOf(error) !== undefined) throw error

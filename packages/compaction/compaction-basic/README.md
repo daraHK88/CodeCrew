@@ -168,6 +168,10 @@ Read these pages when the package-level contract is not enough; they move from t
 
 -----
 
+## Coding policy
+
+A failed proactive pressure compaction is suppressed for the rest of the same turn while the model route and retained-surface replacement generation remain unchanged. A new turn, model route or replacement generation permits another attempt; a successful compaction clears the failure. Manual compaction and confirmed context-overflow recovery keep their existing retry behavior. Cancellation propagates rather than recording a pressure failure.
+
 <a id="model-experience"></a>
 ## Model Experience
 

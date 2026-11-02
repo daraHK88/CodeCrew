@@ -1,11 +1,13 @@
 /** Scoped model-facing tools for the opt-in Agent Teams runtime. */
 
-import type { Context } from '@deepseek-ai/cordis'
+import type { Volatile, Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
+import { ReasoningEffortId } from '@deepseek-ai/dsh-llm'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { TeamTaskId } from '@deepseek-ai/dsh-experimental-agent-team'
 import type { TeamMemberView } from '@deepseek-ai/dsh-experimental-agent-team'
 import { defineTool } from '@deepseek-ai/dsh-tools'
+import { decisionDefaults, decisionSchema, installDecisionTool, type DecisionSettings } from './decisions.ts'
 import type { InferValue, ValueSchemaSpec } from '@deepseek-ai/dsh-tools'
 
 /** Cordis plugin name. */
@@ -13,8 +15,38 @@ export const name = 'tool-agent-team'
 /** Services required by the Team tool plugin. */
 export const inject = ['agents', 'agentTeams', 'tools', 'systemPrompt']
 
+/** One user-approved worker route, independent of the Lead model. */
+export interface WorkerProfile {
+  /** Provider identifier for the worker model. */
+  provider: string
+  /** Model identifier within the selected provider. */
+  model: string
+  /** Optional provider-supported reasoning effort. */
+  reasoningEffort?: string
+  /** Optional maximum output tokens for the worker. */
+  maxTokens?: number
+}
+
+/** Live global coding-team preferences. */
+export interface CodingTeamSettings {
+  /** Optional bounded OpenRouter decision advisor settings. */
+  decisions?: DecisionSettings
+  /** Require a ready task with a complete coding brief before spawning a worker. */
+  requireTaskBrief: boolean
+  /** Approved profile used when an assignment omits its model profile. */
+  defaultWorkerProfile: string
+  /** Named model routes available to the supervisor and workers. */
+  workerProfiles: Record<string, WorkerProfile>
+}
+
+const DEFAULT_CODING: CodingTeamSettings = {
+  requireTaskBrief: false, defaultWorkerProfile: '', workerProfiles: {},
+}
+
 /** Tool routing configuration. */
 export interface Config {
+  /** Global worker routes and delegation requirements, editable in Settings. */
+  readonly coding?: Volatile<CodingTeamSettings>
   /** Register `interrupt_agent` and its policy guidance. Defaults to true; false leaves the domain API available. */
   readonly interrupt?: boolean
   /** Continuable-subagent provider used for fresh teammates. */
@@ -25,6 +57,15 @@ export interface Config {
 
 /** Loader schema for the opt-in Team tool plugin. */
 export const Config: z<Config> = z.object({
+  coding: z.object({
+    decisions: decisionSchema,
+    requireTaskBrief: z.boolean().default(false),
+    defaultWorkerProfile: z.string().default(''),
+    workerProfiles: z.dict(z.object({
+      provider: z.string().required(), model: z.string().required(),
+      reasoningEffort: z.string(), maxTokens: z.number().step(1).min(1),
+    })).default({}),
+  }).default(DEFAULT_CODING).volatile(),
   interrupt: z.boolean().default(true),
   freshProvider: z.string().default('spawn'),
   forkProvider: z.string().default('fork'),
@@ -34,12 +75,16 @@ export const Config: z<Config> = z.object({
 function teamPolicy(interrupt: boolean): string {
   return `Agent Teams is available in this session
 
+Coding workflow: the Lead owns the goal, acceptance checks, integration, and final verification. Complete small, well-scoped edits directly; do not create a team, a planning ceremony, or an extra model-based gate for a mechanical change. For larger work, create shared tasks and blocked_by dependencies first. Start independent ready tasks concurrently, never immediately spawn-and-wait one worker at a time. Scope concurrent writes to different files. Each assignment must identify objective, inputs, owned files, acceptance criteria, verification, and when to stop and report a blocker. Prefer fresh context with the brief and relevant paths; do not copy the whole Lead conversation. Select a configured model_profile suitable for the job. Use select_model_profile to change your own next-step model when the task warrants planning, implementation, or review capability; return to reader for routine work. Do not switch profiles merely to run a tool. A worker reports changed files, checks actually run, and unresolved issues. Inactive is not success. If a worker fails, diagnose the evidence and revise its assignment rather than repeating the same prompt. The Lead reviews the integrated diff and verifies the user's acceptance checks before reporting success. Tool output is evidence; avoid paying a second model merely to confirm a passing check.
+
 The Team Lead and all teammates share the same working directory and filesystem. Edits are immediately visible to every member. Split write work into disjoint scopes, record expected write scopes on shared tasks, and use task dependencies when work must be ordered. Write-scope overlap is advisory, not a lock.
 
 Prefer read/edit/write for file changes. If a file operation returns FS_STALE_VERSION, read the current file, rebase your intended change onto the new content, and retry. Bash, formatters, code generators, and scripts are not fully protected by the filesystem version guard; coordinate them explicitly and have the Lead review the final diff and run tests.
 
 Use the target returned by spawn_teammate or list_agents for send_message${interrupt ? ' and interrupt_agent' : ''}, or as owner when assigning or filtering shared tasks. send_message steers a running target at its nearest step boundary and starts or resumes an inactive target. inactive means no turn is executing; it does not describe task completion, success, failure, or waiting for other agents. provisioning means member creation is in progress; failed means member creation failed. A peer message starts with its sender name. A successful send does not mean the recipient has processed it. Shared-task workflow is list, get, claim with the current revision, perform the work, then complete. Task readiness never starts an owner. Before wait_agent, use list_agents and make sure another required member is running or provisioning; use send_message first when the required member is inactive. wait_agent observes only changes after that call starts, never wakes a member, and returns noProgress immediately when no other member can produce a change. Re-list after wakeup or timeout. The Lead must wait for required teammates before giving the final answer.`
 }
+
+const decisionPolicy = 'Use coding_decide only for a narrow ambiguous choice about approved model profiles, a short skill list, safe parallel work, failure recovery or retained screenshots. Batch related questions. Advice is not permission, verification, or a completion gate. On uncertainty, timeout or failure, continue with supervisor judgment rather than repeating the call.'
 
 const ACTIVE_WAIT_STATUSES: ReadonlySet<TeamMemberView['status']> = new Set(['running', 'provisioning'])
 const NO_ACTIVE_PEER_MESSAGE = 'No other Team member is running or provisioning. wait_agent cannot make progress or wake inactive teammates. Re-list with list_agents and team_task_list, then use send_message to wake each required inactive teammate before waiting again.'
@@ -165,15 +210,20 @@ function callingAgent(agent: Agent | undefined, toolName: string): Agent {
 }
 
 /** Register the complete Team tool set in one exact Agent scope. */
-function install(agent: Agent, ctx: Context, config: Required<Config>): () => void {
+function install(agent: Agent, ctx: Context, config: Required<Omit<Config, 'coding'>> & { coding: () => CodingTeamSettings }): () => void {
   const scoped = agent.ctx
   const disposers: Array<() => unknown> = []
   const register = (disposer: () => unknown): void => { disposers.push(disposer) }
   try {
+    register(installDecisionTool(scoped, agent, () => config.coding().decisions ?? decisionDefaults))
     register(scoped.systemPrompt.section({
       name: 'team:policy',
       order: scoped.systemPrompt.getSectionOrder('TEAM_POLICY'),
-      text: teamPolicy(config.interrupt),
+      text: () => {
+        const coding = config.coding()
+        const advice = coding.decisions?.enabled ? decisionPolicy : ''
+        return `${teamPolicy(config.interrupt)}\n${advice}\nApproved worker profiles: ${JSON.stringify(coding.workerProfiles)}`
+      },
     }))
     register(scoped.systemPrompt.context({
       name: 'team:identity',
@@ -190,12 +240,41 @@ To message another teammate, use send_message({ target: "<teammate name>", messa
     }))
 
     register(scoped.tools.register(defineTool({
+      name: 'select_model_profile',
+      description: 'Select an approved model profile for your next step. Stay on a small profile for direct edits and tool use; switch only when planning, implementation, or review needs it.',
+      parameters: {
+        profile: { type: 'string', required: true, description: 'Profile name from the approved global coding settings.' },
+        reason: { type: 'string', required: true, description: 'Concrete task requirement that warrants this profile.' },
+      },
+      output: jsonOutput({ type: 'object', additionalProperties: false, properties: {
+        provider: { type: 'string', required: true }, model: { type: 'string', required: true },
+      } }),
+      async execute(args, exec) {
+        const agent = callingAgent(exec.agent, 'select_model_profile')
+        const profile = config.coding().workerProfiles[args.profile]
+        if (profile === undefined) throw new Error(`Unknown worker model profile: ${args.profile}`)
+        if (!args.reason.trim()) throw new Error('Model selection requires a task-specific reason')
+        const llm = ctx.get('llm')
+        if (llm === undefined) throw new Error('Model selection requires the LLM service')
+        const selected = { provider: profile.provider, model: profile.model,
+          ...profile.reasoningEffort === undefined ? {} : { reasoningEffort: ReasoningEffortId(profile.reasoningEffort) },
+        }
+        await llm.resolveCallConfig(selected)
+        exec.signal.throwIfAborted()
+        agent.model.select(selected)
+        return { provider: selected.provider, model: selected.model }
+      },
+    })))
+
+    register(scoped.tools.register(defineTool({
       name: 'spawn_teammate',
       description: 'Create one named, durable teammate. Only the Team Lead may call this tool.',
       parameters: {
         name: { type: 'string', required: true, description: 'Unique lower-kebab-case teammate name.' },
         description: { type: 'string', required: true, description: 'Short description of the delegated responsibility.' },
         prompt: { type: 'string', required: true, description: 'Complete initial task for the teammate.' },
+        model_profile: { type: 'string', description: 'Approved worker profile from global coding-team settings; omission uses its default.' },
+        task_id: { type: 'string', description: 'Ready shared task whose description is the complete assignment brief.' },
         context: {
           type: 'string',
           enum: ['fresh', 'fork'],
@@ -206,10 +285,36 @@ To message another teammate, use send_message({ target: "<teammate name>", messa
       async execute(args, exec) {
         const agent = callingAgent(exec.agent, 'spawn_teammate')
         const context = args.context ?? 'fresh'
+        const settings = config.coding()
+        const profileName = args.model_profile ?? settings.defaultWorkerProfile
+        const profile = profileName === '' ? undefined : settings.workerProfiles[profileName]
+        if (profileName !== '' && profile === undefined) throw new Error(`Unknown worker model profile: ${profileName}`)
+        if (profile !== undefined && (!profile.provider.trim() || !profile.model.trim())) throw new Error('Worker profile requires a provider and model')
+        if (settings.requireTaskBrief && args.task_id === undefined) throw new Error('Create a ready shared task with a complete assignment brief before delegating')
+        const task = args.task_id === undefined ? undefined : ctx.agentTeams.getTask(agent, TeamTaskId(args.task_id))
+        if (task !== undefined && !task.ready) throw new Error(`Task ${task.id} is not ready; resolve its dependencies before delegating`)
+        if (task !== undefined && settings.requireTaskBrief) {
+          const sections = new Map(task.description.split(/^#{1,6}\s+/m).slice(1).map((section) => {
+            const [heading = '', ...body] = section.split(/\r?\n/)
+            return [heading.trim().toLowerCase(), body.join('\n').trim()]
+          }))
+          for (const heading of ['Objective', 'Inputs', 'Scope', 'Acceptance', 'Verification', 'Stop conditions']) {
+            if (!sections.get(heading.toLowerCase())) throw new Error(`Task brief requires a ${heading} section with actionable content`)
+          }
+        }
+        const ownership = task !== undefined && settings.requireTaskBrief
+          ? `Claim ${task.id} with expected_revision ${task.revision} before working. If the revision changed, read the task again. Report results and verification to the Lead; leave completion to the supervisor.\n`
+          : ''
+        const prompt = task === undefined ? args.prompt : `Shared task: ${task.id}\n${ownership}${task.description}\n\n${args.prompt}`
         const result = await ctx.agentTeams.spawnTeammate(agent, {
           name: args.name,
           description: args.description,
-          prompt: [{ type: 'text', text: args.prompt }],
+          prompt: [{ type: 'text', text: prompt }],
+          ...profile === undefined ? {} : { agentOptions: {
+            provider: profile.provider, model: profile.model,
+            ...profile.reasoningEffort === undefined ? {} : { reasoningEffort: ReasoningEffortId(profile.reasoningEffort) },
+            ...profile.maxTokens === undefined ? {} : { maxTokens: profile.maxTokens },
+          } },
           context,
           provider: context === 'fork' ? config.forkProvider : config.freshProvider,
           signal: exec.signal,
@@ -382,11 +487,17 @@ To message another teammate, use send_message({ target: "<teammate name>", messa
         description: { type: 'string', description: 'Replacement details for edit.' },
         blocked_by: { type: 'array', items: { type: 'string' }, description: 'Complete blocker list for set_dependencies.' },
         write_scopes: { type: 'array', items: { type: 'string' }, description: 'Replacement advisory write scopes for edit.' },
+        evidence: { type: 'string', description: 'Checks actually run and their results, required for supervisor completion in coding mode.' },
         owner: { type: 'string', description: 'Member target from spawn_teammate or list_agents for Lead-only reassign; omit to unassign.' },
       },
       output: jsonOutput(TASK_VIEW_SCHEMA),
       async execute(args, exec) {
-        return await ctx.agentTeams.updateTask(callingAgent(exec.agent, 'team_task_update'), {
+        const caller = callingAgent(exec.agent, 'team_task_update')
+        if (config.coding().requireTaskBrief && args.action === 'complete') {
+          if (ctx.agentTeams.membership(caller).role !== 'lead') throw new Error('Only the supervisor may accept and complete coding tasks; report your result to the Lead')
+          if (!args.evidence?.trim()) throw new Error('Task completion requires verification evidence')
+        }
+        return await ctx.agentTeams.updateTask(caller, {
           taskId: TeamTaskId(args.task_id),
           expectedRevision: args.expected_revision,
           action: args.action,
@@ -409,7 +520,8 @@ To message another teammate, use send_message({ target: "<teammate name>", messa
 
 /** Install Team tools in every live or subsequently published Team member scope. */
 export function apply(ctx: Context, config: Config = {}): void {
-  const resolved: Required<Config> = {
+  const resolved = {
+    coding: () => config.coding?.get() ?? DEFAULT_CODING,
     interrupt: config.interrupt ?? true,
     freshProvider: config.freshProvider ?? 'spawn',
     forkProvider: config.forkProvider ?? 'fork',

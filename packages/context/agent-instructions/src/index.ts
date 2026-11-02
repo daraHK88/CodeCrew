@@ -11,6 +11,7 @@
 
 import type {} from '@deepseek-ai/dsh-working-directory'
 import type { Context } from '@deepseek-ai/cordis'
+import { installMemory } from './memory.ts'
 import { isDeepStrictEqual } from 'node:util'
 import type { Agent, PreStepDecision } from '@deepseek-ai/dsh-agent'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
@@ -83,6 +84,7 @@ function filePathFromExecution(exec: ToolExecution): string | undefined {
 }
 
 export function apply(ctx: Context, config: Config): void {
+  installMemory(ctx, config)
   const resolved: ResolvedConfig = resolveConfig(config)
   const instructionVersions: InstructionVersionCache = new WeakMap()
   const baselinePreparations = new WeakMap<Session, {

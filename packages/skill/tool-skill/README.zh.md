@@ -104,6 +104,10 @@ agent 可以在会话期间发现并加载 skill。当 `skill` 工具可见时�
 
 -----
 
+## 编码策略
+
+可选自动选择使用本地、不区分大小写的关键词规则，采用首个匹配规则，不发起分类模型请求。它处理新的用户输入或 agent 任务输入，并优先保留显式技能调用；仅在 `maxSkills` 和 `maxBytes` 范围内加入完整、可见且允许模型调用的技能。每个技能正文均以来源为 `skill-automatic` 的持久 `user/message` 记录。全局 `codingSettings.skills()` 优先于本地动态 `automatic` 策略；未匹配任务仍可手动加载技能。字节限制仅适用于自动加载，不限制显式工具结果。
+
 <a id="model-experience"></a>
 ## 模型体验
 

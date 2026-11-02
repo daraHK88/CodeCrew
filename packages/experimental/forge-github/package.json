@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-experimental-forge-github",
   "description": "GitHub provider for the experimental forge registry, read through the GitHub CLI on the host",
-  "version": "0.2.2-alpha.2",
+  "version": "0.2.2",
   "publishConfig": {
     "access": "public"
   },
@@ -25,7 +25,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/deepseek-ai/deepseek-harness.git",
+    "url": "git+https://github.com/daraHK88/CodeCrew.git",
     "directory": "packages/experimental/forge-github"
   },
   "dependencies": {

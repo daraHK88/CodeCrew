@@ -698,6 +698,14 @@ const SERVICE_ROLES: ServiceRole[] = [
     note: 'Reads the default ModelSelection from volatile Config and saves selections through the profile editor.',
   },
   {
+    key: 'codingSettings',
+    pkg: 'agent-default-model',
+    title: 'Global coding preferences',
+    mode: 'core',
+    consumers: ['agent-instructions', 'tool-skill'],
+    note: 'Provides global skill and memory policies independently of preset activation.',
+  },
+  {
     key: 'agentLoop',
     pkg: 'agent-loop',
     title: 'Concrete loop driver',

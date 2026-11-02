@@ -1,13 +1,13 @@
 {
   "name": "@deepseek-ai/dsh-workspace",
   "description": "Workspace entity registry (ctx.workspaceRegistry): durable workspace records with validated session attachment over the domain data form for the DeepSeek Harness",
-  "version": "0.2.2-alpha.2",
+  "version": "0.2.2",
   "publishConfig": {
     "access": "public"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/deepseek-ai/deepseek-harness.git",
+    "url": "git+https://github.com/daraHK88/CodeCrew.git",
     "directory": "packages/workspace/workspace"
   },
   "type": "module",

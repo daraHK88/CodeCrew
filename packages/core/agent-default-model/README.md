@@ -96,6 +96,10 @@ The package-level contract is enough for most consumers; read these when you nee
 
 -----
 
+## Coding policy
+
+`@deepseek-ai/dsh-agent-default-model/coding-settings` owns the global `ctx.codingSettings` service, independently of agent presets. Its volatile `skills` and `memory` settings are read by preset-local consumers; `skills()` and `memory()` return their current immutable policies. The coding settings page edits these global values, while chat model choices remain Session-local. See the [coding profile](../../../coding/README.md) for configuration and operation.
+
 <a id="model-experience"></a>
 ## Model Experience
 

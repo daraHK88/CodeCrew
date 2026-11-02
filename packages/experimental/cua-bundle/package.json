@@ -1,14 +1,14 @@
 {
   "name": "@deepseek-ai/dsh-cua-bundle",
   "description": "Optional macOS Computer Use and permission setup",
-  "version": "0.2.2-alpha.2",
+  "version": "0.2.2",
   "icon": "./icon.svg",
   "publishConfig": {
     "access": "public"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/deepseek-ai/deepseek-harness.git",
+    "url": "git+https://github.com/daraHK88/CodeCrew.git",
     "directory": "packages/experimental/cua-bundle"
   },
   "type": "module",

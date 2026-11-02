@@ -5,8 +5,9 @@
  */
 
 import type {} from '@deepseek-ai/dsh-working-directory'
+import type {} from '@deepseek-ai/dsh-agent-default-model/coding-settings'
 import { createHash } from 'node:crypto'
-import type { Context } from '@deepseek-ai/cordis'
+import type { Volatile, Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import type { Agent, PreStepDecision } from '@deepseek-ai/dsh-agent'
 import { defineTool } from '@deepseek-ai/dsh-tools'
@@ -46,6 +47,7 @@ export interface SkillCatalogSource {
 declare module '@deepseek-ai/dsh-llm' {
   interface MessageSourceMap {
     'skill-catalog': SkillCatalogSource
+    'skill-automatic': { readonly kind: 'skill-automatic'; readonly name: string; readonly form: 'instructions' }
   }
 }
 
@@ -60,16 +62,46 @@ function catalogSourceEntries(
   }))
 }
 
+/** Bounded, local skill selection rules; first matching rule wins. */
+export interface AutomaticSkillSettings {
+  /** Load permitted skill instructions when a local rule matches. */
+  enabled: boolean
+  /** Maximum complete skills loaded for one assignment. */
+  maxSkills: number
+  /** Total UTF-8 budget for automatically loaded skill instructions. */
+  maxBytes: number
+  /** Ordered local phrase rules; the first matching rule is used. */
+  rules: {
+    /** Case-insensitive phrases matched against the admitted assignment. */
+    keywords: string[]
+    /** Skill names tried in order within the visibility and size limits. */
+    skills: string[]
+  }[]
+}
+
 /** Model-facing skill catalog configuration. */
 export interface Config {
+  /** Automatically load permitted skills for a newly admitted user or teammate assignment. */
+  automatic?: Volatile<AutomaticSkillSettings>
   /** Maximum normalized description length rendered in the session catalog; minimum 3. */
   catalogDescriptionMaxLength?: number
 }
 
 /** Validate and default the model-facing skill catalog configuration. */
 export const Config: z<Config> = z.object({
+  automatic: z.object({
+    enabled: z.boolean().default(false),
+    maxSkills: z.number().step(1).min(1).max(4).default(1),
+    maxBytes: z.number().step(1).min(1).default(12000),
+    rules: z.array(z.object({ keywords: z.array(z.string()), skills: z.array(z.string()) })).default([]),
+  }).default({ enabled: false, maxSkills: 1, maxBytes: 12000, rules: [] }).volatile(),
   catalogDescriptionMaxLength: z.number().default(DEFAULT_CATALOG_DESCRIPTION_MAX_LENGTH),
 })
+
+/** Peer-message providers extend the source vocabulary outside this package. */
+function isAssignmentSource(kind: string): boolean {
+  return kind === 'user' || kind === 'agent-message'
+}
 
 /**
  * Register the model-facing skill loader and its visibility-matched
@@ -78,7 +110,7 @@ export const Config: z<Config> = z.object({
  * same-name shadow therefore removes both the schema and its call guidance.
  */
 export function apply(ctx: Context, config: Config = {}): void {
-  const catalogDescriptionMaxLength = config.catalogDescriptionMaxLength ?? DEFAULT_CATALOG_DESCRIPTION_MAX_LENGTH
+  const catalogDescriptionMaxLength = ctx.get('codingSettings')?.skills().catalogDescriptionMaxLength ?? config.catalogDescriptionMaxLength ?? DEFAULT_CATALOG_DESCRIPTION_MAX_LENGTH
   assertPositiveInteger('catalogDescriptionMaxLength', catalogDescriptionMaxLength, 3)
 
   const skillTool = defineTool({
@@ -163,6 +195,36 @@ export function apply(ctx: Context, config: Config = {}): void {
     },
   })
   ctx.tools.register(skillTool)
+
+  // Automatic selection has no network call and only runs for newly claimed assignments.
+  ctx.on('agent/pre-step', async ({ agent, messages, signal }, next): Promise<PreStepDecision> => {
+    const decision = await next()
+    const automatic = ctx.get('codingSettings')?.skills() ?? config.automatic?.get()
+    if (decision.kind === 'reject' || automatic?.enabled !== true || ctx.tools.get(skillTool.name, agent) !== skillTool) return decision
+    const task = messages.filter(message => isAssignmentSource(message.source.kind))
+      .flatMap(message => message.content.flatMap(block => block.type === 'text' ? [block.text] : [])).join(' ').toLowerCase()
+    if (!task || invokedSkillNames(messages).length > 0) return decision
+    const rule = automatic.rules.find(rule => rule.keywords.some(word => word.trim() && task.includes(word.toLowerCase())))
+    if (rule === undefined) return decision
+    signal.throwIfAborted()
+    const lookup = { cwd: await ctx.workingDirectory.ensure(agent, signal), signal, scope: agent }
+    const injections: UserMessage[] = []
+    let bytes = 0
+    for (const name of [...new Set(rule.skills)].slice(0, automatic.maxSkills)) {
+      const skill = await ctx.skills.get(name, lookup)
+      signal.throwIfAborted()
+      if (skill === undefined || !isModelInvocable(skill)) continue
+      const body = renderSkillContent(skill)
+      const size = Buffer.byteLength(body, 'utf8')
+      if (bytes + size > automatic.maxBytes) continue
+      bytes += size
+      injections.push(createUserMessage({
+        content: [{ type: 'text', text: body }],
+        source: { kind: 'skill-automatic', name: skill.name, form: 'instructions' },
+      }))
+    }
+    return injections.length === 0 ? decision : { ...decision, messages: [...decision.messages, ...injections] }
+  })
 
   // User-explicit skill invocation: a claimed user message whose first line
   // starts with `/<name>` naming a user-invocable skill is a deterministic

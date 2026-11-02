@@ -1,13 +1,13 @@
 {
   "name": "@deepseek-ai/dsh-working-directory",
   "description": "Session working directories with durable changes and model context",
-  "version": "0.2.2-alpha.2",
+  "version": "0.2.2",
   "publishConfig": {
     "access": "public"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/deepseek-ai/deepseek-harness.git",
+    "url": "git+https://github.com/daraHK88/CodeCrew.git",
     "directory": "packages/session/working-directory"
   },
   "type": "module",

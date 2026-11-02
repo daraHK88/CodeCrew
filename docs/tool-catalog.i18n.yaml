@@ -9,8 +9,8 @@
   en: 6cc2cd9ced70bb09
   zh: 1c0e6cb4ba2ed637
 /tool-schema-catalog/tool-package-map:
-  en: fd4d90071c13dcbd
-  zh: 87867027203f0354
+  en: d21f2a846504beab
+  zh: 44d1985121581b31
 /tool-schema-catalog/deepseek-ai-dsh-plugin-manager:
   en: e0143916bb634762
   zh: e0143916bb634762
@@ -278,12 +278,18 @@
 /tool-schema-catalog/deepseek-ai-dsh-experimental-tool-agent-team:
   en: 6b1106f417b50db6
   zh: 6b1106f417b50db6
+/tool-schema-catalog/deepseek-ai-dsh-experimental-tool-agent-team/coding-decide:
+  en: 93984add30a6b77e
+  zh: 8a8a4f2ed593cecd
 /tool-schema-catalog/deepseek-ai-dsh-experimental-tool-agent-team/interrupt-agent:
   en: c3c7af05ceb9f8c9
   zh: ec379e0b42110c6a
 /tool-schema-catalog/deepseek-ai-dsh-experimental-tool-agent-team/list-agents:
   en: f9457f033f75f00a
   zh: a2d60ec44118c34c
+/tool-schema-catalog/deepseek-ai-dsh-experimental-tool-agent-team/select-model-profile:
+  en: 12d960d5afa54621
+  zh: 57da3902e04933c6
 /tool-schema-catalog/deepseek-ai-dsh-experimental-tool-agent-team/send-message:
   en: ec50e6a0b86aecc6
   zh: 29c8728536a5adf1
@@ -303,7 +309,7 @@
   en: 2eac7360ba68b1bd
   zh: b5d676bf288c245e
 /tool-schema-catalog/deepseek-ai-dsh-experimental-tool-agent-team/wait-agent:
-  en: e70c77a45832bb28
+  en: cefefad2cd76b68f
   zh: 7d03bec294b65452
 /tool-schema-catalog/deepseek-ai-dsh-tool-todo:
   en: dea62d26fb18ff68

@@ -70,6 +70,7 @@ export const SERVICE_PAGE: Record<string, string> = {
   mcpResources: 'mcp.md',
   agentLoop: 'core.md',
   agentDefaultModel: 'core.md',
+  codingSettings: 'core.md',
   agentPresets: 'core.md',
   agents: 'core.md',
   approval: 'approval.md',
@@ -299,6 +300,8 @@ export const EVENT_WALK_EXEMPTIONS: Record<string, string> = {
  * appear on more than one page.
  */
 export const LINK_MAP: Readonly<Record<string, string>> = {
+  SkillPolicy: 'core.md',
+  MemoryPolicy: 'core.md',
   Principal: 'typert.md',
   PrincipalMap: 'typert.md',
   RemoteAccessResource: 'typert.md',

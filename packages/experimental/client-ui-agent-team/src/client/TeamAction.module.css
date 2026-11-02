@@ -351,3 +351,11 @@
     display: inline;
   }
 }
+
+.taskGraph { overflow: auto; max-height: 260px; margin-bottom: 12px; color: var(--dsw-alias-label-tertiary); }
+.taskGraph:focus-visible { outline: 2px solid var(--dsw-alias-label-primary); outline-offset: 2px; }
+.graphNode rect { fill: var(--dsw-alias-bg-layer-1); stroke: var(--dsw-alias-border-l4); }
+.graphNode text { fill: var(--dsw-alias-label-primary); font-size: 12px; }
+.graphNode .graphOwner { fill: var(--dsw-alias-label-tertiary); font-size: 10px; }
+.graphNode[data-status="completed"] rect { stroke: var(--dsw-alias-state-success-primary); }
+.graphNode[data-status="in_progress"] rect { stroke: var(--dsw-alias-label-primary); stroke-width: 2px; }

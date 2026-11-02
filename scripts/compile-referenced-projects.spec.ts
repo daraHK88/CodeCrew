@@ -9,7 +9,7 @@ import { runCiBench } from './run-ci-bench.ts'
 import { removeFixtureSafely } from './test-fixture-cleanup.ts'
 import { setPublishedFiles, writeTypertWorkspace } from './typert-workspace.fixture.ts'
 
-const compiler = fileURLToPath(import.meta.resolve('typescript/bin/tsc'))
+const compiler = fileURLToPath(new URL('./bin/tsc', import.meta.resolve('typescript-native/package.json')))
 
 function fixture(): { root: string; leaf: string } {
   const root = mkdtempSync(join(tmpdir(), 'dsh-referenced-projects-'))

@@ -11,7 +11,7 @@ Desktop product events use the optional [product analytics service](../product-a
 
 ## Summary
 
-`dsh-client-ui-settings-models` is the Models settings page of the dsh web client: users configure API keys (stored write-only under the profile's credential reference), edit each provider's model list, and hand-declare custom pi-ai routes, with provider rows and one editor card at a time. The page joins the provider directory, the settings document, and the credential descriptions into one shared snapshot, so a row's state stays consistent across all three. It also walks first-run users through two ordered dialogs — a versioned preview notice and the conditional official-DeepSeek credential step.
+`dsh-client-ui-settings-models` is the Models settings page of the dsh web client: users configure API keys (stored write-only under the profile's credential reference), edit each provider's model list, and hand-declare custom pi-ai routes, with provider rows and one editor card at a time. The page joins the provider directory, the settings document, and the credential descriptions into one shared snapshot, so a row's state stays consistent across all three. It also walks first-run users through two ordered dialogs — a versioned welcome notice and the conditional official-DeepSeek credential step.
 
 ## Table of Contents
 
@@ -121,6 +121,10 @@ These pages cover the settings base, the seams this page joins, and the design r
 -----
 
 The `settings.models.sign-in` slot lets account login offer a choice before the credential editor; without a contributor the editor renders directly. Closing the account choice completes the whole onboarding step. Explicit reopening from the account menu enters the same editor even when a provider is already configured.
+
+## Coding policy
+
+When the global `coding-settings` plugin is mounted, Settings exposes a Coding page for the global default model, approved worker routes, scoped-task policy, automatic skills, memory and parallel tool calls. Model choices come from the live provider catalog. Each mutation uses the existing fenced settings form and reports saving, success or failure. Per-chat model choices do not save this global default.
 
 <a id="model-experience"></a>
 ## Model Experience

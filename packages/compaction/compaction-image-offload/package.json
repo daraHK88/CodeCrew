@@ -1,13 +1,13 @@
 {
   "name": "@deepseek-ai/dsh-compaction-image-offload",
   "description": "Durable image offload for image-capable routes: replace over-budget request images with placeholders and retry",
-  "version": "0.2.2-alpha.2",
+  "version": "0.2.2",
   "publishConfig": {
     "access": "public"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/deepseek-ai/deepseek-harness.git",
+    "url": "git+https://github.com/daraHK88/CodeCrew.git",
     "directory": "packages/compaction/compaction-image-offload"
   },
   "type": "module",

@@ -510,6 +510,8 @@ interface TurnBoundaryProjection {
 }
 ```
 
+`SkillPolicy` 和 `MemoryPolicy` 是 `ctx.codingSettings` 返回的只读全局设置。技能策略包含启用状态、完整指令和目录描述预算以及按序匹配规则；记忆策略包含启用状态、通用与工作区路径及总字节预算。具体配置与限制见 [agent-default-model](../../packages/core/agent-default-model/README.zh.md)。
+
 <!-- BEGIN GENERATED cordis-surface (gen-cordis-catalog.ts) — do not edit between markers -->
 
 <a id="cordis-surface"></a>
@@ -875,6 +877,26 @@ roots(): Agent[]
 Types: [Session](session.zh.md)
 
 Source: [`packages/core/agent/src/index.ts`](../../packages/core/agent/src/index.ts)
+
+<a id="ctxcodingsettings--codingsettings"></a>
+
+### `ctx.codingSettings` — `CodingSettings`
+
+Own global preferences independently of preset activation and agent lifetime.
+
+```ts cordis-catalog
+/** Read the global skill policy.
+ * @returns the current immutable skill policy for every preset.
+ */
+skills(): SkillPolicy
+
+/** Read the global memory policy.
+ * @returns the current immutable memory policy for every workspace.
+ */
+memory(): MemoryPolicy
+```
+
+Source: [`packages/core/agent-default-model/src/coding-settings.ts`](../../packages/core/agent-default-model/src/coding-settings.ts)
 
 <a id="agent-events"></a>
 

@@ -111,3 +111,13 @@ describe('desktop welcome Web operations', () => {
     await expect(connectDesktopWelcome(url, send)).rejects.toThrow('Web authentication failed')
   })
 })
+
+
+it('opens the coding profile without calling the disabled official account API', async () => {
+  const host = transport('en')
+  host.namespaces.splice(0, 1, { ns: 'coding-settings', value: {} })
+  const backend = await connectDesktopWelcome(url, host.send)
+  expect(await backend.requiresAccountSetup()).toBe(false)
+  expect(await backend.read()).toMatchObject({ accountSetupRequired: false, loggedIn: false, hasApiKey: false })
+  expect(host.send.mock.calls.some(([, init]) => typeof init?.body === 'string' && init.body.includes('account/getState'))).toBe(false)
+})

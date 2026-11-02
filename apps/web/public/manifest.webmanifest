@@ -1,6 +1,6 @@
 {
-  "name": "DeepSeek Harness",
-  "short_name": "DSH",
+  "name": "CodeCrew",
+  "short_name": "CodeCrew",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

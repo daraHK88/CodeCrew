@@ -4,6 +4,8 @@
  * @module @deepseek-ai/dsh-agent-instructions/config
  */
 
+import type { Volatile } from '@deepseek-ai/cordis'
+import type { MemorySettings } from './memory.ts'
 import { relative } from 'node:path'
 import z from '@deepseek-ai/schemastery'
 import { resolveAgentsHome, resolveDshHome } from '@deepseek-ai/dsh-home-paths'
@@ -16,6 +18,8 @@ const RESERVED_PATH_SEGMENTS = new Set(['', '.', '..'])
 
 /** User-facing workspace instruction loader configuration. */
 export interface Config {
+  /** Global and workspace memory, refreshed automatically without model requests. */
+  memory?: Volatile<MemorySettings>
   /** Directory entries that identify the project root while walking upward from the current working directory. */
   projectRootMarkers?: string[]
   /**
@@ -39,6 +43,10 @@ export interface Config {
 }
 
 export const Config: z<Config> = z.object({
+  memory: z.object({
+    enabled: z.boolean().default(false), globalFile: z.string().default(''),
+    workspaceFile: z.string().default('.dsh/BRIEF.md'), maxBytes: z.number().step(1).min(1024).max(65536).default(6000),
+  }).default({ enabled: false, globalFile: '', workspaceFile: '.dsh/BRIEF.md', maxBytes: 6000 }).volatile(),
   projectRootMarkers: z.array(z.string()).default([...DEFAULT_PROJECT_ROOT_MARKERS]),
   maxBytes: z.number().required(),
   maxSourceBytes: z.number().step(1).min(1).default(DEFAULT_MAX_SOURCE_BYTES),

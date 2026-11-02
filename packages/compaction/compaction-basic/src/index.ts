@@ -130,6 +130,8 @@ export class BasicCompactionEngine extends CompactionEngine {
   readonly config: ResolvedConfig
 
   private readonly warnedPressureConfigTargets = new Set<string>()
+  /** Do not repeat an unchanged failed pressure summary within the same turn. */
+  private readonly failedPressure = new WeakMap<Agent, { turn: number; generation: number; provider: string; model: string }>()
   private readonly overflowRetries = new WeakMap<Agent, number>()
   private readonly overflowAgents = new WeakMap<Session, Agent>()
 
@@ -155,18 +157,27 @@ export class BasicCompactionEngine extends CompactionEngine {
     }
 
     ctx.on('agent/pre-step', async (
-      { agent, signal },
+      { agent, signal, turn, modelSelection: target },
       next,
     ): Promise<PreStepDecision> => {
+      const failed = this.failedPressure.get(agent)
+      if (failed !== undefined && failed.turn === turn
+        && failed.generation === agent.session.surface.replaceGeneration
+        && failed.provider === target.provider && failed.model === target.model) return next()
       if (!signal.aborted) {
         try {
           const result = await this.compactIfNeeded(agent, 'pressure', signal)
+          this.failedPressure.delete(agent)
           if (result !== null) logResult(result, 'step pressure')
         } catch (error: unknown) {
           if (error instanceof TargetPressureConfigError) {
             if (this.warnedPressureConfigTargets.has(error.targetKey)) return next()
             this.warnedPressureConfigTargets.add(error.targetKey)
           }
+          signal.throwIfAborted()
+          this.failedPressure.set(agent, {
+            turn, generation: agent.session.surface.replaceGeneration, provider: target.provider, model: target.model,
+          })
           const message = error instanceof Error ? error.message : String(error)
           ctx.logger.warn(`step compaction failed: ${message}; continuing the turn`)
         }

@@ -1990,6 +1990,24 @@ describe('automatic listener and loader composition', () => {
     expect(session.snapshotEvents().some(event => event.type === 'compaction/summary')).toBe(false)
   })
 
+  it('does not repeat a failed pressure summary until the turn, target or surface changes', async () => {
+    const ctx = createContext()
+    const compact = new TestCompactionEngine(ctx, { headroomTokens: 0, maxTokens: 8192, thresholdRatio: 0.5, retainTokens: 180 })
+    compact.error = new Error('summary context overflow')
+    const owner = agent(conversation(4), MODEL)
+    await preStep(ctx, owner)
+    await preStep(ctx, owner)
+    expect(compact.calls).toHaveLength(1)
+    await agentEvents(ctx, owner).waterfall('agent/pre-step', {
+      modelSelection: { provider: 'mock', model: 'mock' }, messages: [], turn: 2, step: 1, signal: SIGNAL,
+    }, () => Promise.resolve({ kind: 'enter' as const, messages: [] }))
+    expect(compact.calls).toHaveLength(2)
+    await agentEvents(ctx, owner).waterfall('agent/pre-step', {
+      modelSelection: { provider: 'mock', model: 'changed' }, messages: [], turn: 2, step: 2, signal: SIGNAL,
+    }, () => Promise.resolve({ kind: 'enter' as const, messages: [] }))
+    expect(compact.calls).toHaveLength(3)
+  })
+
   it('warns once per routed target when proactive pressure has no context metadata', async () => {
     const ctx = createContext()
     const warnings: string[] = []

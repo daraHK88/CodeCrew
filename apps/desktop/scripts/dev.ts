@@ -10,7 +10,7 @@ import type { DesktopRelease } from '../src/release.ts'
 import { developmentRuntimeDirectory, resolveDesktopBuildTarget } from './desktop-build-paths.mjs'
 import { prepareDevelopmentProject } from './development-project.ts'
 import { prepareDevelopmentApp } from './development-app.ts'
-import { preparePrimaryRuntime } from './prepare-primary-runtime.ts'
+import { preparePrimaryRuntime, smokePrimaryRuntime } from './prepare-primary-runtime.ts'
 
 const APP_ROOT = resolve(import.meta.dirname, '..')
 const REPOSITORY_ROOT = resolve(APP_ROOT, '..', '..')
@@ -78,7 +78,8 @@ async function launchElectron(): Promise<void> {
   console.log(`desktop development: inspectors main=${String(mainPort)}, renderer=${String(rendererPort)}, host=${String(hostPort)}`)
   if (process.platform === 'darwin') {
     const executable = prepareDevelopmentApp({ electron, appRoot: APP_ROOT, directory: DEVELOPMENT_ROOT, home, userData,
-      mainPort, rendererPort, hostPort, openDevtools: environment.DSH_DESKTOP_OPEN_DEVTOOLS! })
+      mainPort, rendererPort, hostPort, primaryRuntime: environment.DSH_DESKTOP_PRIMARY_RUNTIME_DIR!,
+      openDevtools: environment.DSH_DESKTOP_OPEN_DEVTOOLS! })
     await run(executable, [], APP_ROOT, environment)
     return
   }
@@ -120,7 +121,8 @@ async function main(): Promise<void> {
     release,
     target: resolveDesktopBuildTarget(),
   })
-  await preparePrimaryRuntime()
+  if (process.env.DSH_DESKTOP_PRIMARY_RUNTIME_DIR) smokePrimaryRuntime(process.env.DSH_DESKTOP_PRIMARY_RUNTIME_DIR)
+  else await preparePrimaryRuntime()
   await launchElectron()
 }
 

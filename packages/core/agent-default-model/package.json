@@ -1,13 +1,13 @@
 {
   "name": "@deepseek-ai/dsh-agent-default-model",
   "description": "Default model selection shared by Agent entry points",
-  "version": "0.2.2-alpha.2",
+  "version": "0.2.2",
   "publishConfig": {
     "access": "public"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/deepseek-ai/deepseek-harness.git",
+    "url": "git+https://github.com/daraHK88/CodeCrew.git",
     "directory": "packages/core/agent-default-model"
   },
   "type": "module",
@@ -20,12 +20,17 @@
     },
     "./src/*": "./src/*",
     "./package.json": "./package.json",
-    "./locale/*.json": "./locale/*.json"
+    "./locale/*.json": "./locale/*.json",
+    "./coding-settings": {
+      "types": "./lib/types/coding-settings.d.ts",
+      "default": "./lib/coding-settings.js"
+    }
   },
   "files": [
     "locale/*.json",
     "lib/index.js",
-    "lib/types/**/*.d.ts"
+    "lib/types/**/*.d.ts",
+    "lib/coding-settings.js"
   ],
   "license": "MIT",
   "dependencies": {

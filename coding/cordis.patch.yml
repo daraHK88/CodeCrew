@@ -1,0 +1,108 @@
+# Coding profile overlay. Apply after base, web-app, and agent-team-profile.
+- id: agent-default-model
+  config:
+    provider: openai-codex
+    model: gpt-6-luna
+    reasoningEffort: low
+- id: tool-agent-team
+  config:
+    freshProvider: spawn
+    forkProvider: fork
+    coding:
+      decisions:
+        enabled: true
+        model: typesafe/jev-1.14
+        apiKeyEnv: OPENROUTER_API_KEY
+        timeoutMs: 2500
+        minConfidence: 0.7
+        maxTextBytes: 12000
+        maxImageBytes: 2097152
+        maxCallsPerTurn: 2
+        maxQuestions: 4
+        maxOptions: 12
+      requireTaskBrief: true
+      defaultWorkerProfile: reader
+      workerProfiles:
+        reader:
+          provider: openai-codex
+          model: gpt-6-luna
+          reasoningEffort: low
+          maxTokens: 4096
+        implementer:
+          provider: openai-codex
+          model: gpt-6.1-sol
+          reasoningEffort: medium
+          maxTokens: 8192
+        planner:
+          provider: openai-codex
+          model: gpt-6.1-sol
+          reasoningEffort: high
+          maxTokens: 8192
+        reviewer:
+          provider: openai-codex
+          model: gpt-6.1-sol
+          reasoningEffort: medium
+          maxTokens: 4096
+- id: agent-loop
+  config:
+    maxParallelToolCalls: 4
+- id: subagent
+  config:
+    maxActiveSubagents: 4
+    maxDepth: 1
+- insert:
+    - id: coding-settings
+      name: '@deepseek-ai/dsh-agent-default-model/coding-settings'
+      config:
+        skills:
+          enabled: true
+          maxSkills: 1
+          maxBytes: 12000
+          catalogDescriptionMaxLength: 180
+          rules:
+            - keywords: [redesign, new website, landing page, build a dashboard]
+              skills: [design-distinctive-frontends]
+            - keywords: [polish the ui, audit the ui, review the interface]
+              skills: [impeccable]
+            - keywords: [diagnose, investigate, root cause]
+              skills: [diagnosing-bugs]
+        memory:
+          enabled: true
+          globalFile: ''
+          workspaceFile: .dsh/BRIEF.md
+          maxBytes: 6000
+- id: compaction-basic
+  config:
+    auto: true
+    thresholdRatio: 0.7
+    headroomTokens: 16384
+    maxTokens: 4096
+    retainRatio: 0.12
+    # Keep the routed model's context capacity; do not send a large prefix to a smaller summary model.
+    summarizationProvider: ''
+    summarizationModel: ''
+- id: llm-pi-ai
+  config:
+    providers:
+      openai-codex: {}
+      openrouter: { apiKeyEnv: OPENROUTER_API_KEY }
+      anthropic: { apiKeyEnv: ANTHROPIC_API_KEY }
+      xai: { apiKeyEnv: XAI_API_KEY }
+- id: deepseek-account
+  disabled: true
+- id: llm-deepseek
+  disabled: true
+- id: llm-deepseek-account
+  disabled: true
+- id: session-log-deepseek
+  disabled: true
+- id: plugin-package-inventory-deepseek
+  disabled: true
+- id: ui-settings-account
+  disabled: true
+- id: account-controller
+  disabled: true
+# Keep secrets in the ignored CodeCrew home, outside published source.
+- id: credentials
+  config:
+    path: !!js "(process.env.DSH_HOME || process.env.HOME + '/.codecrew') + '/.credentials.yaml'"

@@ -25,6 +25,8 @@ import { MockAdapter, textResponse, toolCallResponse } from '../../../core/agent
 import { mountWorkingDirectoryFixture } from '../../../subagent/subagent/tests/working-directory-fixture.ts'
 import TeamService from '../../agent-team/src/index.ts'
 import * as toolTeam from '../src/index.ts'
+import { MemoryCredentials } from '../../../credentials/credentials/tests/memory.ts'
+import { decisionDefaults } from '../src/decisions.ts'
 
 function serializeRequest(request: GenerateOptions) {
   const connection = resolveAdapterOptions({ models: [{ id: request.model, systemPromptUpdate: 'in-history' }] })
@@ -38,6 +40,7 @@ function runtimeContextText(request: GenerateOptions) {
 
 const SIGNAL = new AbortController().signal
 const TOOL_NAMES = [
+  'select_model_profile',
   'spawn_teammate',
   'send_message',
   'list_agents',
@@ -779,4 +782,107 @@ describe('dsh-tool-team', () => {
     await vi.waitFor(() => { expect(ctx.agents.get(childId)).toBeUndefined() }, { timeout: 5_000 })
     expect(ctx.agentTeams.listMembers(lead)[1]).toMatchObject({ provider: 'team-fresh' })
   })
+})
+
+
+describe('coding-team delegation settings', () => {
+  it('uses an approved inexpensive worker route instead of inheriting the Lead model', async () => {
+    const { ctx, lead, fiber } = await setup(['hang'])
+    await fiber.dispose()
+    await ctx.plugin(toolTeam, { coding: {
+      requireTaskBrief: false, defaultWorkerProfile: 'reader',
+      workerProfiles: { reader: { provider: 'mock', model: 'small-worker', maxTokens: 512 } },
+    } } as never)
+    const result = await execute(ctx, lead, 'spawn_teammate', { name: 'reader', description: 'read one file', prompt: 'Read the named file and report the exported function.' })
+    expect(result.isError).toBe(false)
+    const childId = spawnedChildId(ctx, lead, result)
+    await vi.waitFor(() => { expect(ctx.agents.get(childId)?.options).toMatchObject({ provider: 'mock', model: 'small-worker', maxTokens: 512 }) })
+  })
+
+  it('refuses unscoped, blocked, and unknown-profile delegation before starting a worker', async () => {
+    const { ctx, lead, fiber } = await setup([])
+    await fiber.dispose()
+    await ctx.plugin(toolTeam, { coding: { requireTaskBrief: true, defaultWorkerProfile: '', workerProfiles: {} } } as never)
+    const args = { name: 'reader', description: 'read file', prompt: 'Read file' }
+    expect(text(await execute(ctx, lead, 'spawn_teammate', args))).toContain('complete assignment brief')
+    expect(text(await execute(ctx, lead, 'spawn_teammate', { ...args, model_profile: 'missing' }))).toContain('Unknown worker model profile')
+    const blocker = await ctx.agentTeams.createTask(lead, { subject: 'dependency', description: 'unfinished' })
+    const task = await ctx.agentTeams.createTask(lead, { subject: 'blocked', description: 'unfinished', blockedBy: [blocker.id] })
+    expect(text(await execute(ctx, lead, 'spawn_teammate', { ...args, task_id: task.id }))).toContain('not ready')
+    const ready = await ctx.agentTeams.createTask(lead, { subject: 'ready', description: 'vague order' })
+    expect(text(await execute(ctx, lead, 'spawn_teammate', { ...args, task_id: ready.id }))).toContain('Objective section')
+    expect(ctx.agentTeams.listMembers(lead)).toHaveLength(1)
+  })
+})
+
+
+it('starts a ready scoped assignment and reserves acceptance for the supervisor', async () => {
+  const { ctx, lead, fiber, adapter } = await setup(['hang'])
+  await fiber.dispose()
+  await ctx.plugin(toolTeam, { coding: { requireTaskBrief: true, defaultWorkerProfile: '', workerProfiles: {} } } as never)
+  const description = ['Objective', 'Inputs', 'Scope', 'Acceptance', 'Verification', 'Stop conditions'].map(heading => `## ${heading}\nConcrete ${heading.toLowerCase()} for this task.`).join('\n\n')
+  const task = await ctx.agentTeams.createTask(lead, { subject: 'Inspect one file', description })
+  const started = await execute(ctx, lead, 'spawn_teammate', { name: 'reader', description: 'inspect one file', prompt: 'Execute the scoped assignment.', task_id: task.id })
+  expect(started.isError).toBe(false)
+  const id = spawnedChildId(ctx, lead, started)
+  await vi.waitFor(() => { expect(ctx.agents.get(id)).toBeDefined() })
+  const worker = ctx.agents.get(id)!
+  await vi.waitFor(() => {
+    const request = adapter.requests.find(request => request.sessionId === id)
+    expect(request).toBeDefined()
+    expect(JSON.stringify(request?.messages)).toContain(`Claim ${task.id} with expected_revision ${task.revision}`)
+  })
+  const claimed = await ctx.agentTeams.updateTask(worker, { taskId: task.id, expectedRevision: task.revision, action: 'claim' })
+  const completion = { task_id: task.id, expected_revision: claimed.revision, action: 'complete' }
+  expect(text(await execute(ctx, worker, 'team_task_update', { ...completion, evidence: 'File inspected.' }))).toContain('Only the supervisor')
+  expect(text(await execute(ctx, lead, 'team_task_update', completion))).toContain('verification evidence')
+  expect((await execute(ctx, lead, 'team_task_update', { ...completion, evidence: 'Reviewed the returned file references and confirmed the exported signature.' })).isError).toBe(false)
+  expect(ctx.agentTeams.getTask(lead, task.id).status).toBe('completed')
+})
+
+
+it('records approved profile changes for the next step without changing the global default', async () => {
+  const { ctx, lead, fiber } = await setup([])
+  await fiber.dispose()
+  await ctx.plugin(toolTeam, { coding: { requireTaskBrief: false, defaultWorkerProfile: 'reader', workerProfiles: {
+    reader: { provider: 'mock', model: 'mock' }, planner: { provider: 'mock', model: 'planner' },
+  } } } as never)
+  const selected = await execute(ctx, lead, 'select_model_profile', { profile: 'planner', reason: 'The requested migration needs an architecture decision.' })
+  expect(selected.isError).toBe(false)
+  expect(lead.model.current()).toMatchObject({ provider: 'mock', model: 'planner' })
+  expect(lead.session.snapshotEvents().some(event => event.type === 'model/selection')).toBe(true)
+  expect((await execute(ctx, lead, 'select_model_profile', { profile: 'unapproved', reason: 'test' })).isError).toBe(true)
+})
+
+
+it('keeps decision calls optional and enforces the per-turn request budget', async () => {
+  const args = { context: 'Choose the sufficient approved role for this synthetic exact edit.', questions: [{
+    id: 'route', question: 'Which role is sufficient?', options: [
+      { id: 'reader', description: 'Routine work' }, { id: 'planner', description: 'Difficult architecture' },
+    ],
+  }] }
+  const { ctx, lead, fiber, adapter } = await setup([
+    toolCallResponse('decision-one', 'coding_decide', args),
+    toolCallResponse('decision-two', 'coding_decide', args),
+    textResponse('The supervisor continues without another decision request.'),
+  ])
+  await ctx.plugin(MemoryCredentials, { OPENROUTER_API_KEY: 'fixture-key' })
+  await fiber.dispose()
+  await ctx.plugin(toolTeam, { coding: {
+    requireTaskBrief: false, defaultWorkerProfile: '', workerProfiles: {},
+    decisions: { ...decisionDefaults, enabled: true, maxCallsPerTurn: 1 },
+  } } as never)
+  const fetcher = vi.fn<typeof fetch>().mockImplementation(() => Promise.resolve(Response.json({
+    model: 'typesafe/jev-test', answers: { route: {
+      type: 'choice', choice: 'reader', confidence: 0.99, probabilities: { reader: 1, planner: 0 },
+    } },
+  })))
+  vi.stubGlobal('fetch', fetcher)
+  try {
+    await runTurn(lead, 'Exercise the two synthetic decision tool calls in the recording.')
+    expect(fetcher).toHaveBeenCalledTimes(1)
+    expect(adapter.requests[0]?.tools?.some(tool => tool.name === 'coding_decide')).toBe(true)
+    expect(JSON.stringify(lead.session.snapshotEvents())).toContain('Decision request budget reached')
+    expect(lead.model.current()).toMatchObject({ provider: 'mock', model: 'mock' })
+  } finally { vi.unstubAllGlobals() }
 })

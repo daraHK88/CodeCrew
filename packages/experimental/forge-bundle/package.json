@@ -1,14 +1,14 @@
 {
   "name": "@deepseek-ai/dsh-experimental-forge-bundle",
   "description": "Experimental change request panel and worktree option for Sessions in Git repositories",
-  "version": "0.2.2-alpha.2",
+  "version": "0.2.2",
   "icon": "./icon.svg",
   "publishConfig": {
     "access": "public"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/deepseek-ai/deepseek-harness.git",
+    "url": "git+https://github.com/daraHK88/CodeCrew.git",
     "directory": "packages/experimental/forge-bundle"
   },
   "type": "module",

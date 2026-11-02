@@ -641,48 +641,22 @@ describe('Web session model selection', () => {
       await expect.poll(() => returned).toBe(true)
       expect(currentSelection(ctx, sessionId)).toMatchObject({ provider: 'deepseek-official', model })
     }
-    expect(saves).toHaveLength(2)
+    expect(saves).toHaveLength(0)
   })
 
-  it('saves an accepted selection as the default and survives a storage failure', async () => {
+  it('keeps chat selection independent of the global default', async () => {
     const { ctx, sessionId } = await harness()
-    const warn = vi.spyOn(ctx.logger, 'warn').mockImplementation(() => {})
-    onTestFinished(() => { warn.mockRestore() })
     const saved: unknown[] = []
-    let reject = false
     const remote = await createSessionTestRemote(ctx, {
       defaultModelSelection: () => ({ provider: 'deepseek-official', model: 'deepseek-chat' }),
-      saveDefaultModelSelection: (selection) => {
-        saved.push(selection)
-        return reject ? Promise.reject(new Error('read-only document')) : Promise.resolve()
-      },
+      saveDefaultModelSelection: (selection) => { saved.push(selection); return Promise.resolve() },
       cwd: '/tmp',
     })
-
-    expectValue(await remote.selectModel(request({
-      sessionId, provider: 'deepseek-official', model: 'deepseek-reasoner', reasoningEffort: 'max',
-    })))
-    expect(saved).toEqual([
-      { provider: 'deepseek-official', model: 'deepseek-reasoner', reasoningEffort: 'max' },
-    ])
-
-    // A refused selection never becomes anyone's default.
+    expectValue(await remote.selectModel(request({ sessionId, provider: 'deepseek-official', model: 'deepseek-reasoner', reasoningEffort: 'max' })))
+    expect(currentSelection(ctx, sessionId)).toMatchObject({ provider: 'deepseek-official', model: 'deepseek-reasoner' })
+    expect(saved).toEqual([])
     await remote.selectModel(request({ sessionId, provider: 'missing', model: 'model' }))
-    expect(saved).toHaveLength(1)
-
-    // Storage failing is not the selection failing: the switch already applies
-    // to this session, so the call still succeeds.
-    reject = true
-    const stillAccepted = expectValue(await remote.selectModel(request({
-      sessionId, provider: 'deepseek-official', model: 'deepseek-chat',
-    })))
-    expect(stillAccepted.selected).toEqual({ provider: 'deepseek-official', model: 'deepseek-chat' })
-    expect(currentSelection(ctx, sessionId))
-      .toEqual({ provider: 'deepseek-official', model: 'deepseek-chat' })
-    expect(saved[1]).toEqual({ provider: 'deepseek-official', model: 'deepseek-chat' })
-    await expect.poll(() => warn.mock.calls).toContainEqual([
-      'session-controller: model selection changed for the Session but the default was not saved: Error: read-only document',
-    ])
+    expect(saved).toEqual([])
     await ctx.fiber.dispose()
   })
 

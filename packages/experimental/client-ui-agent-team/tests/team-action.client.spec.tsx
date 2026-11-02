@@ -3,6 +3,13 @@
 import { Profiler } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
+
+/** Assert the detailed task board separately from labels repeated in its flowchart. */
+function getBoardText(...args: Parameters<typeof screen.getByText>) {
+  const matches = screen.getAllByText(...args).filter(element => !element.closest('svg'))
+  expect(matches).toHaveLength(1)
+  return matches[0]!
+}
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type {
   TeamMemberProjection, TeamProjection, TeamTaskId, TeamTaskView as TeamTask,
@@ -128,15 +135,15 @@ describe('TeamAction', () => {
     render(<TeamAction {...b.props} />)
     expect(screen.getByRole('button', { name: /智能体团队/u }).textContent).toBe(zh.trigger)
     openPanel()
-    expect(await screen.findByText('Implement runtime')).toBeTruthy()
-    expect(screen.getByText('write scopes overlap with task-2')).toBeTruthy()
+    expect(await screen.findByText('Implement runtime', { selector: 'strong' })).toBeTruthy()
+    expect(getBoardText('write scopes overlap with task-2')).toBeTruthy()
     expect(screen.queryByRole('button', { name: /刷新|Refresh/u })).toBeNull()
 
     setProjection(b.sessions, SESSION, {
       members: [lead, worker, { id: 'worker-b' as SessionId, name: 'worker-b', role: 'teammate', phase: 'provisioning' }],
       tasks: [task, { ...task, id: TASK_2, subject: 'Pushed task', status: 'pending', ready: true, writeScopeWarnings: [] }],
     })
-    expect(screen.getByText('Pushed task')).toBeTruthy()
+    expect(getBoardText('Pushed task')).toBeTruthy()
     expect(screen.getByRole('button', { name: /worker-b/u })).toHaveProperty('disabled', true)
     expect(screen.getByRole('heading', { name: '成员3' })).toBeTruthy()
   })
@@ -177,7 +184,7 @@ describe('TeamAction', () => {
     const b = bench({ sessionId: WORKER, parentSessionId: SESSION })
     render(<TeamAction {...b.props} />)
     openPanel()
-    expect(screen.getByText('Implement runtime')).toBeTruthy()
+    expect(getBoardText('Implement runtime')).toBeTruthy()
     expect(screen.getByRole<HTMLButtonElement>('button', { name: /^worker/u }).disabled).toBe(true)
     fireEvent.click(screen.getByRole('button', { name: /^lead/u }))
     expect(b.injected.openTeammate).toHaveBeenCalledWith(WORKER, SESSION)
@@ -194,12 +201,12 @@ describe('TeamAction', () => {
     act(() => { b.session.set({ ...b.session.getSnapshot(), openState: 'open' }) })
     expect(screen.getByRole('status').textContent).toBe(zh.unavailable)
     setProjectionSnapshot(b.sessions, SESSION, { state: 'idle', error: null, values: { agentTeam: team } })
-    expect(screen.getByText('Implement runtime')).toBeTruthy()
+    expect(getBoardText('Implement runtime')).toBeTruthy()
     expect(screen.queryByRole('status')).toBeNull()
     setProjectionSnapshot(b.sessions, SESSION, { state: 'idle', error: null, values: {} })
     expect(screen.getByRole('status').textContent).toBe(zh.unavailable)
     setProjection(b.sessions, SESSION, { members: [lead], tasks: [] })
-    expect(screen.getByText(zh.empty)).toBeTruthy()
+    expect(getBoardText(zh.empty)).toBeTruthy()
   })
 
   it('waits for the shared Session list and accepts cached projections without an explicit read', () => {
@@ -212,7 +219,7 @@ describe('TeamAction', () => {
       ...b.sessions.getSnapshot(), phase: 'ready',
       projectionsBySession: { [SESSION]: { state: 'idle', error: null, values: { agentTeam: team } } },
     }) })
-    expect(screen.getByText('Implement runtime')).toBeTruthy()
+    expect(getBoardText('Implement runtime')).toBeTruthy()
     expect(screen.queryByRole('status')).toBeNull()
   })
 
@@ -245,7 +252,7 @@ describe('TeamAction', () => {
     })
     expect(screen.getByRole('button', { name: /worker.*updated-worker-model/u })).toBeTruthy()
     setProjection(b.sessions, SESSION, { ...team, tasks: [{ ...task, subject: 'Updated parent task' }] })
-    expect(screen.getByText('Updated parent task')).toBeTruthy()
+    expect(getBoardText('Updated parent task')).toBeTruthy()
   })
 
   it('shows capability absence after a successful read instead of loading forever', () => {
@@ -263,7 +270,7 @@ describe('TeamAction', () => {
     render(<TeamAction {...b.props} />)
     openPanel()
     expect(screen.getByRole('alert').textContent).toBe('团队持久记录无效：revision is not contiguous')
-    expect(screen.getByText('Implement runtime')).toBeTruthy()
+    expect(getBoardText('Implement runtime')).toBeTruthy()
   })
 
   it('renders roster/task state variants and reports navigation failures', () => {
@@ -293,11 +300,11 @@ describe('TeamAction', () => {
     b.injected.openTeammate = vi.fn(() => { throw new Error('navigation failed') })
     render(<TeamAction {...b.props} {...b.injected} />)
     openPanel()
-    expect(screen.getByText('provider failed')).toBeTruthy()
-    expect(screen.getByText(zh.ready)).toBeTruthy()
-    expect(screen.getByText(zh.blocked)).toBeTruthy()
+    expect(getBoardText('provider failed')).toBeTruthy()
+    expect(getBoardText(zh.ready)).toBeTruthy()
+    expect(getBoardText(zh.blocked)).toBeTruthy()
     expect(screen.getAllByText('Owner: 未分配')).toHaveLength(2)
-    expect(screen.getByText('Owner: worker')).toBeTruthy()
+    expect(getBoardText('Owner: worker')).toBeTruthy()
     const failedMember = screen.getByRole<HTMLButtonElement>('button', { name: /failed-worker/u })
     const provisioningMember = screen.getByRole<HTMLButtonElement>('button', { name: /provisioning-worker/u })
     expect(failedMember.disabled).toBe(true)
@@ -365,14 +372,14 @@ describe('TeamAction', () => {
       render(<TeamAction {...bench().props} />)
       fireEvent.click(screen.getByRole('button', { name: /智能体团队/u }))
       const expand = await screen.findByRole('button', { name: zh['task.expand'] })
-      const description = screen.getByText('Build the Team runtime')
+      const description = getBoardText('Build the Team runtime')
       expect(expand.getAttribute('aria-expanded')).toBe('false')
       expect(description.className).not.toBe('')
 
       fireEvent.click(expand)
       const collapse = screen.getByRole('button', { name: zh['task.collapse'] })
       expect(collapse.getAttribute('aria-expanded')).toBe('true')
-      expect(screen.getByText('Build the Team runtime').className).toBe('')
+      expect(getBoardText('Build the Team runtime').className).toBe('')
 
       fireEvent.click(collapse)
       expect(screen.getByRole('button', { name: zh['task.expand'] })).toBeTruthy()
@@ -462,7 +469,7 @@ describe('TeamAction', () => {
     }
     render(<TeamAction {...bench().props} />)
     const trigger = screen.getByRole('button', { name: /智能体团队/u })
-    const label = screen.getByText(zh.trigger)
+    const label = getBoardText(zh.trigger)
     const computedStyle = window.getComputedStyle.bind(window)
     vi.spyOn(window, 'getComputedStyle').mockImplementation(element =>
       element === label ? { display: 'none' } as CSSStyleDeclaration : computedStyle(element))
@@ -482,12 +489,12 @@ describe('TeamAction', () => {
     openPanel()
     await act(async () => { await vi.advanceTimersByTimeAsync(60_000) })
     setProjection(b.sessions, SESSION, { ...team, tasks: [{ ...task, subject: 'Pushed while pinned' }] })
-    expect(screen.getByText('Pushed while pinned')).toBeTruthy()
+    expect(getBoardText('Pushed while pinned')).toBeTruthy()
   })
 
   it('keeps an accessible trigger name when its label is collapsed', () => {
     render(<TeamAction {...bench().props} />)
-    screen.getByText(zh.trigger).style.display = 'none'
+    getBoardText(zh.trigger).style.display = 'none'
     expect(screen.getByRole('button', { name: zh.trigger })).toBeTruthy()
   })
 
@@ -550,7 +557,7 @@ it('updates expansion availability on paragraph resize and disconnects its obser
   vi.spyOn(Element.prototype, 'clientHeight', 'get').mockReturnValue(36)
   const view = render(<TeamAction {...bench().props} />)
   openPanel()
-  const paragraph = screen.getByText('Build the Team runtime')
+  const paragraph = getBoardText('Build the Team runtime')
   const observer = observers.find(item => item.observe.mock.calls.some(([target]) => target === paragraph))!
   expect(observer).toBeDefined()
   expect(screen.queryByRole('button', { name: zh['task.expand'] })).toBeNull()

@@ -1,5 +1,6 @@
 /** Public Agent Teams identities, durable records, and service request values. */
 
+import type { ModelSelection } from '@deepseek-ai/dsh-agent/types'
 import type { MessageId } from '@deepseek-ai/dsh-llm/brand'
 import type { Branded } from '@deepseek-ai/dsh-brand'
 import type { ContentBlock } from '@deepseek-ai/dsh-llm/types'
@@ -163,6 +164,8 @@ export interface Config {
 
 /** Input for creating one durable teammate. */
 export interface SpawnTeammateRequest {
+  /** Explicit worker route and output budget; omission inherits the Lead options. */
+  readonly agentOptions?: Partial<ModelSelection> & { readonly maxTokens?: number }
   readonly name: string
   readonly description: string
   readonly prompt: ContentBlock[]

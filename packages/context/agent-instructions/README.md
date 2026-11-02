@@ -124,6 +124,10 @@ Read these pages when the package-level contract is not enough. They move from t
 
 -----
 
+## Coding policy
+
+Optional memory loading reads the general file and the current workspace brief at admitted step boundaries. The global `codingSettings.memory()` policy takes precedence over local `memory` configuration. Snapshots are durable `user/message` inputs, deduplicated while retained, refreshed after file changes and restored when compaction removes them. Workspace paths must stay within the current working directory, including after symlink resolution. Missing files are optional; oversized files are omitted whole within the combined byte budget. This reader does not write or summarize memory. See the [coding profile](../../../coding/README.md) for paths and limits.
+
 <a id="model-experience"></a> <a id="prompt-shape"></a>
 ## Model Experience
 

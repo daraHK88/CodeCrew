@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-desktop",
   "description": "Electron desktop shell for a bundled dsh runtime and external plugins",
-  "version": "0.2.2-alpha.2",
+  "version": "0.2.2",
   "private": true,
   "license": "MIT",
   "author": {
@@ -11,7 +11,7 @@
   "main": "lib/main.js",
   "scripts": {
     "test:installer": "node scripts/test-windows-installer.mjs",
-    "build": "tsc -b && pnpm run bundle",
+    "build": "node ../../node_modules/typescript-native/bin/tsc -b && pnpm run bundle",
     "bundle": "tsdown --config-loader native",
     "dev": "tsx scripts/dev.ts",
     "start": "tsx scripts/dev.ts --skip-build",
@@ -90,5 +90,6 @@
     "@deepseek-ai/dsh-util-file-drag": "workspace:*",
     "@deepseek-ai/dsh-client-ui-file-actions": "workspace:*",
     "tencentcloud-sdk-nodejs-teo": "4.1.330"
-  }
+  },
+  "productName": "CodeCrew"
 }

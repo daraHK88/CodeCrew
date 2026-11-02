@@ -1,0 +1,28 @@
+# Bilingual-pair consistency record for 2026-11-02-codecrew-context.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/persistence-changes/2026-11-02-codecrew-context.md
+/:
+  en: 3d5a424ae7d7e46b
+  zh: c22a8e4a62d8cc1a
+/2026-11-02-codecrew-context:
+  en: 2800619c9c71b18f
+  zh: 607ca7ac0bad06b1
+/2026-11-02-codecrew-context/summary:
+  en: 072df647acfc2117
+  zh: 6a9619839c49b309
+/2026-11-02-codecrew-context/table-of-contents:
+  en: 6cf314a069ceb451
+  zh: 9adff678e9ecab3b
+/2026-11-02-codecrew-context/declaration:
+  en: 6907136f28e48c90
+  zh: 02f8298485f3d8e7
+/2026-11-02-codecrew-context/compatibility:
+  en: 99c8241a8117d656
+  zh: 20c015654e760b2b
+/2026-11-02-codecrew-context/verification:
+  en: 4d361d9f28885fe9
+  zh: 216abe75bedebc47
+/2026-11-02-codecrew-context/dev-note:
+  en: b75c8458928b72b9
+  zh: 003ba4e17b4b5269

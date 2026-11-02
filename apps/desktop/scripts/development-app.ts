@@ -15,6 +15,7 @@ export interface DevelopmentAppOptions {
   readonly rendererPort: number
   readonly hostPort: number
   readonly openDevtools: string
+  readonly primaryRuntime: string
 }
 
 function quote(value: string): string { return `'${value.replaceAll("'", "'\\''")}'` }
@@ -26,8 +27,8 @@ function quote(value: string): string { return `'${value.replaceAll("'", "'\\''"
  */
 export function prepareDevelopmentApp(options: DevelopmentAppOptions): string {
   const source = dirname(dirname(dirname(options.electron)))
-  const bundle = join(options.directory, 'Harness Dev.app')
-  const executable = join(bundle, 'Contents', 'MacOS', 'HarnessDev')
+  const bundle = join(options.directory, 'CodeCrew.app')
+  const executable = join(bundle, 'Contents', 'MacOS', 'CodeCrew')
   const stamp = join(bundle, 'Contents', 'Resources', 'dsh-development.json')
   const launcher = developmentLauncher(options, bundle)
   const identity = JSON.stringify({ ...options, launcher, plist: readFileSync(join(source, 'Contents', 'Info.plist'), 'utf8') })
@@ -36,11 +37,11 @@ export function prepareDevelopmentApp(options: DevelopmentAppOptions): string {
     execFileSync('/usr/bin/ditto', [source, bundle])
     const plist = join(bundle, 'Contents', 'Info.plist')
     const values = {
-      CFBundleIdentifier: `com.deepseek.harness.dev.${createHash('sha256').update(options.appRoot).digest('hex').slice(0, 12)}`,
-      CFBundleName: 'Harness Dev',
-      CFBundleDisplayName: 'Harness Dev',
-      CFBundleExecutable: 'HarnessDev',
-      CFBundleURLTypes: [{ CFBundleURLName: 'DeepSeek Harness', CFBundleURLSchemes: ['dsh'], CFBundleTypeRole: 'Viewer' }],
+      CFBundleIdentifier: `dev.codecrew.desktop.${createHash('sha256').update(options.appRoot).digest('hex').slice(0, 12)}`,
+      CFBundleName: 'CodeCrew',
+      CFBundleDisplayName: 'CodeCrew',
+      CFBundleExecutable: 'CodeCrew',
+      CFBundleURLTypes: [{ CFBundleURLName: 'CodeCrew', CFBundleURLSchemes: ['codecrew'], CFBundleTypeRole: 'Viewer' }],
     }
     for (const [key, value] of Object.entries(values)) {
       execFileSync('/usr/bin/plutil', ['-replace', key, '-json', JSON.stringify(value), plist])
@@ -62,6 +63,7 @@ export function prepareDevelopmentApp(options: DevelopmentAppOptions): string {
 export function developmentLauncher(options: DevelopmentAppOptions, bundle: string): string {
   const environment = {
     DSH_HOME: options.home,
+    DSH_DESKTOP_PRIMARY_RUNTIME_DIR: options.primaryRuntime,
     DSH_DESKTOP_DEV_APP: '1',
     DSH_DESKTOP_HOST_INSPECT_PORT: String(options.hostPort),
     DSH_DESKTOP_OPEN_DEVTOOLS: options.openDevtools,

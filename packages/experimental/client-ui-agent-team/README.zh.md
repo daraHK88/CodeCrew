@@ -72,6 +72,10 @@ Client export 通过 Cordis effect 注册 locale dictionary 与一个 conversati
 
 -----
 
+## 编码策略
+
+任务面板还根据持久任务状态绘制实时 SVG 依赖图，显示状态和负责人。同深度的独立任务共用一列，依赖关系连接后续列。图表可在支持键盘聚焦的区域内滚动，详细任务卡片仍提供文本视图。图表仅展示状态，不调度任务。
+
 <a id="model-experience"></a>
 ## 模型体验
 
