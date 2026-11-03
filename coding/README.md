@@ -47,6 +47,18 @@ Jev also supplies optional automatic skill fallback, unpinned worker routing and
 
 The coding profile enables anchored editing globally for newly created tools. Agents can use `edit_lines` for repeated code and substantial replacements, while literal editing remains available for small unique changes. See the [edit tool contract](../packages/fs/tool-fs/README.md#anchored-editing) and [Oh My Pi research](oh-my-pi-research.md) for evidence and tradeoffs.
 
+## Session speed diagnosis
+
+Run the offline [session profiler](profile-session.mjs) against a selected current v4 recording, optionally comparing a previous session:
+
+```sh
+node coding/profile-session.mjs --session session-id --compare previous-session-id --home .coding-home --out .artifacts/session-profile
+```
+
+Replace the example IDs with the sessions to inspect. Open the generated `report.html` for per-step model/tool timings, worker overlap, queue/startup intervals, background-job lifetimes and token/cache counts. `profile.json` contains the same derived measurements. The reader opens only the selected sessions and their recorded children; unresolved children mark all-agent totals as partial. It selects the newest recorded generation, rejects unsupported formats and excludes inherited fork history while retaining ordinary restart history.
+
+Active time excludes gaps between turns; the wall clock keeps them. Parallel tools are measured by interval union, and workers/jobs are separate overlapping lanes. Before-first-chunk time includes local request preparation, network and provider delay; streaming time is measured from received chunks. Current logs cannot split those components further. Categories describe action intent; judge usefulness against requirements and actual outcomes. Reports retain file basenames and model names, while omitting raw prompts, reasoning text, shell commands and tool/source bodies. This diagnostic runs offline with no extra model calls. Check it with `node --test coding/profile-session.test.mjs`.
+
 ## Verification and limits
 
 Focused tests cover worker routing, brief validation, supervisor acceptance, model changes, memory isolation and restoration, automatic skills, and repeated compaction failures. The settings save/reload flow was exercised in a real browser at desktop and mobile widths. Native TypeScript 7 checks and the Web build passed. A live Luna copy-edit smoke completed read, edit and exact verification in approximately 7.7 seconds with no workers or extra workflow. One fixture does not establish overall latency, token savings, or model quality; compare real coding tasks before making those claims. The macOS development app has been launched and checked; no standalone installer or replacement of the original app is included.

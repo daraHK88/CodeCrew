@@ -47,6 +47,18 @@ Jev 还提供可选的自动技能后备选择、未指定模型的 worker 路�
 
 编码 profile 为新创建的工具全局启用锚点编辑。agent 可用 `edit_lines` 处理重复代码和较大替换，小型唯一修改仍可使用字面量编辑。证据和权衡见[编辑工具约定](../packages/fs/tool-fs/README.zh.md#anchored-editing)和 [Oh My Pi 调研](oh-my-pi-research.md)。
 
+## 会话速度诊断
+
+离线运行[会话分析器](profile-session.mjs)，分析指定的当前 v4 记录，也可比较上一次会话：
+
+```sh
+node coding/profile-session.mjs --session session-id --compare previous-session-id --home .coding-home --out .artifacts/session-profile
+```
+
+将示例 ID 替换为目标会话。生成的 `report.html` 展示每步模型与工具耗时、worker 重叠、排队与启动时间、后台任务生命周期及 token/缓存计数；`profile.json` 保存相同测量。读取范围仅限所选会话及其记录的子会话；无法读取子会话时，会标明总计不完整。读取器选择最新记录版本，拒绝不支持的格式，排除 fork 继承历史并保留普通重启历史。
+
+活跃时间不含轮次间隔，墙钟时间保留间隔。并行工具按时间区间并集计时，worker 与后台任务另列重叠时间线。首个数据块前的时间包含本地请求准备、网络及提供方延迟；流式时间来自已接收的数据块，现有日志无法进一步拆分。分类仅表示动作意图，是否有用需结合需求与实际结果判断。报告保留文件基本名和模型名，不导出原始提示词、推理文本、shell 命令或工具与源码正文。分析器离线运行，不增加模型调用。验证命令为 `node --test coding/profile-session.test.mjs`。
+
 ## 验证和限制
 
 专项测试覆盖 worker 路由、任务描述校验、主管验收、模型切换、记忆隔离和恢复、自动技能以及重复压缩失败。设置保存和刷新流程已在真实浏览器的桌面与手机宽度下验证。原生 TypeScript 7 检查和 Web 构建通过。一次真实 Luna 文案编辑测试完成了读取、修改和验证，但单一样例不能证明整体延迟、token 节省或模型质量；需通过真实编码任务比较后才能作出这些结论。macOS 开发应用已启动并检查；未提供独立安装器，也未替换原应用。
