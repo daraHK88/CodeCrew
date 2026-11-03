@@ -25,7 +25,7 @@ pre-commit:
       run: git diff --cached --check
 
     - name: pi-ai provider metadata
-      glob: '{pnpm-lock.yaml,packages/llm/llm-pi-ai/package.json,packages/llm/llm-pi-ai/scripts/gen-provider-data.ts,packages/llm/llm-pi-ai/src/provider-data.generated.ts}'
+      glob: '{bun.lock,pnpm-lock.yaml,packages/llm/llm-pi-ai/package.json,packages/llm/llm-pi-ai/scripts/gen-provider-data.ts,packages/llm/llm-pi-ai/src/provider-data.generated.ts}'
       run: node_modules/.bin/tsx packages/llm/llm-pi-ai/scripts/gen-provider-data.ts --check --cached
 
     - name: vendor manifest guard
@@ -46,4 +46,4 @@ pre-merge-commit:
 pre-push:
   jobs:
     - name: typecheck
-      run: pnpm run typecheck
+      run: bun run typecheck

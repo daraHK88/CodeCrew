@@ -6,11 +6,11 @@
 
 ## 运行
 
-使用 Node 24.9 或更新版本及项目声明的 pnpm。类型检查使用本地稳定版原生 TypeScript 7；工具生成器保留旧编译器 API 兼容包。
+使用最新稳定版 Bun 及 Node 24.9 或更新版本。Bun 管理安装与脚本，应用保留 Node/Electron 以兼容原生扩展。类型检查使用本地稳定版原生 TypeScript 7；工具生成器保留旧编译器 API 兼容包。
 
 ```sh
-pnpm install --frozen-lockfile
-pnpm run build
+bun install --frozen-lockfile
+bun run build
 node coding/setup.mjs
 DSH_HOME="$PWD/.coding-home" node --import tsx/esm apps/cli/src/bin.ts coding --no-open --port 3088
 ```
@@ -20,7 +20,7 @@ DSH_HOME="$PWD/.coding-home" node --import tsx/esm apps/cli/src/bin.ts coding --
 运行桌面开发应用：
 
 ```sh
-DSH_HOME="$PWD/.coding-home" DSH_DESKTOP_USER_DATA_DIR="$PWD/.coding-home/electron-user-data" DSH_DESKTOP_OPEN_DEVTOOLS=0 pnpm run start:desktop
+DSH_HOME="$PWD/.coding-home" DSH_DESKTOP_USER_DATA_DIR="$PWD/.coding-home/electron-user-data" DSH_DESKTOP_OPEN_DEVTOOLS=0 bun run start:desktop
 ```
 
 启动器准备运行时并创建本地开发应用。macOS 应用位于 `apps/desktop/.desktop-build/development/CodeCrew.app`，须保留源码目录。原生编码 profile 直接打开工作区，通过 Settings 配置提供方。不提供独立安装器。

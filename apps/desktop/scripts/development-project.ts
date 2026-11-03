@@ -33,7 +33,7 @@ export interface DevelopmentProjectOptions {
   readonly cliDir: string
   /** Current workspace's private Desktop Host application directory. */
   readonly hostDir: string
-  /** pnpm's workspace-wide virtual-hoist directory. */
+  /** The package manager’s workspace-wide dependency directory. */
   readonly dependencyDir: string
   /** Release identity written into the disposable project metadata. */
   readonly release: DesktopRelease

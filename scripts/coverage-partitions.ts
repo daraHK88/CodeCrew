@@ -9,7 +9,7 @@ import { lstat, mkdir, readdir, readFile, rm, unlink, writeFile } from 'node:fs/
 import { join, relative, sep } from 'node:path'
 import type { TestUserConfig } from 'vitest/config'
 import { coverageExemptHeavySuites } from './coverage-exempt.ts'
-import { pnpmInvocation } from './pnpm-invocation.ts'
+import { workspaceInvocation } from './workspace-invocation.ts'
 
 /** Environment variable selecting the number of instrumented coverage processes. */
 export const COVERAGE_PARTITIONS_ENV = 'DSH_COVERAGE_PARTITIONS'
@@ -212,7 +212,7 @@ async function collectInstrumentedFiles(
   inventoryPath: string,
   filters: readonly string[] = [],
 ): Promise<InstrumentedInventory> {
-  const invocation = pnpmInvocation(['exec', 'vitest', 'list', '--filesOnly', `--json=${inventoryPath}`, ...filters], { npm_execpath: pnpmEntrypoint })
+  const invocation = workspaceInvocation(['exec', 'vitest', 'list', '--filesOnly', `--json=${inventoryPath}`, ...filters], { npm_execpath: pnpmEntrypoint })
   await runListCommand(invocation.command, invocation.args, root)
   return parseFileInventory(await readFile(inventoryPath, 'utf8'), root)
 }
@@ -602,7 +602,7 @@ export class CoveragePartitionCoordinator {
     const blobPath = join(this.blobsRoot, `partition-${index}.json`)
     const reportsDirectory = join(this.temporaryRoot, `coverage-${index}`)
     const timingReportPath = join(this.temporaryRoot, `partition-${index}.times.json`)
-    const invocation = pnpmInvocation([
+    const invocation = workspaceInvocation([
       'exec',
       'vitest',
       'run',
@@ -632,7 +632,7 @@ export class CoveragePartitionCoordinator {
   }
 
   private mergeCommand(): CoverageCommand {
-    const invocation = pnpmInvocation([
+    const invocation = workspaceInvocation([
       'exec',
       'vitest',
       `--merge-reports=${this.relativePath(this.blobsRoot)}`,

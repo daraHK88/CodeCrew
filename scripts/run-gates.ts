@@ -13,7 +13,7 @@ import { CLIENT_BUILD_PROFILE_SELECTOR } from './client-build-environment.ts'
 import { COVERAGE_EXEMPT_ENV, coverageExemptHeavySuites } from './coverage-exempt.ts'
 import { COVERAGE_PARTITIONS_ENV, parseCoveragePartitionCount } from './coverage-partitions.ts'
 import { LOCAL_TEST_PARALLELISM_CAP, defaultParallelism, describeDefaultParallelism } from './parallelism.ts'
-import { pnpmInvocation } from './pnpm-invocation.ts'
+import { workspaceInvocation, workspaceManager } from './workspace-invocation.ts'
 
 /** A named aggregate exposed by the gate runner. */
 export type Mode =
@@ -226,7 +226,7 @@ export function ciWorkerEnvironment(
   // reads the same variables (run-gates.spec.ts builds coverage gates from
   // DSH_COVERAGE_PARTITIONS; the oxlint contract spawns run-oxlint, which
   // reads DSH_OXLINT_THREADS), so the aggregate leaves the environment as
-  // `pnpm run test` finds it.
+  // the plain test script finds it.
   if (!mode.startsWith('ci-') || mode === 'ci-unit') return {}
   const budget = defaultParallelism(env, cpus)
   const testBudget = defaultParallelism(env, cpus, LOCAL_TEST_PARALLELISM_CAP)
@@ -265,8 +265,8 @@ function pnpmScript(id: string, script: string, options: Partial<Gate> = {}): Ga
   return {
     id,
     label: options.label ?? script,
-    displayCommand: `pnpm run ${script}`,
-    ...pnpmInvocation(['run', script]),
+    displayCommand: `${workspaceManager()} run ${script}`,
+    ...workspaceInvocation(['run', script]),
     ...options,
   }
 }
@@ -293,9 +293,9 @@ function ciArtifactBuildGate(id = 'build', options: Partial<Gate> = {}): Gate {
 function pnpmExec(id: string, args: string[], options: Partial<Gate> = {}): Gate {
   return {
     id,
-    label: options.label ?? `pnpm exec ${args.join(' ')}`,
-    displayCommand: `pnpm exec ${args.join(' ')}`,
-    ...pnpmInvocation(['exec', ...args]),
+    label: options.label ?? `${workspaceManager()} ${workspaceManager() === 'bun' ? 'run' : 'exec'} ${args.join(' ')}`,
+    displayCommand: `${workspaceManager()} ${workspaceManager() === 'bun' ? 'run' : 'exec'} ${args.join(' ')}`,
+    ...workspaceInvocation(['exec', ...args]),
     ...options,
   }
 }
@@ -579,7 +579,7 @@ function webSnapshotGate(needs: string[], after?: string[]): Gate {
     }
     return pnpmScript('web-snapshot', 'test:web:ci', {
       label: 'web browser snapshot',
-      displayCommand: `DSH_SNAPSHOT=replay DSH_WEB_SNAPSHOT_WORKERS=${workers} pnpm run test:web:ci`,
+      displayCommand: `DSH_SNAPSHOT=replay DSH_WEB_SNAPSHOT_WORKERS=${workers} ${workspaceManager()} run test:web:ci`,
       env: { DSH_SNAPSHOT: 'replay' },
       ...order,
       streamOutput: true,
@@ -587,7 +587,7 @@ function webSnapshotGate(needs: string[], after?: string[]): Gate {
   }
   return pnpmScript('web-snapshot', 'test:web:built', {
     label: 'web browser snapshot',
-    displayCommand: 'DSH_SNAPSHOT=replay pnpm run test:web:built',
+    displayCommand: `DSH_SNAPSHOT=replay ${workspaceManager()} run test:web:built`,
     env: { DSH_SNAPSHOT: 'replay' },
     ...order,
   })
@@ -631,8 +631,8 @@ function electronInstallGate(): Gate {
   return {
     id: 'electron-install',
     label: 'Electron binary',
-    displayCommand: 'pnpm --filter @deepseek-ai/dsh-desktop exec install-electron',
-    ...pnpmInvocation(['--filter', '@deepseek-ai/dsh-desktop', 'exec', 'install-electron']),
+    displayCommand: `${workspaceManager()} ${workspaceManager() === 'bun' ? 'run --filter @deepseek-ai/dsh-desktop' : '--filter @deepseek-ai/dsh-desktop run'} install:electron`,
+    ...workspaceInvocation(['--filter', '@deepseek-ai/dsh-desktop', 'run', 'install:electron']),
     env: { ELECTRON_GET_USE_PROXY: '1' },
   }
 }
@@ -676,7 +676,7 @@ function lintGate(options: { needs?: string[] } = {}): Gate {
   return pnpmScript('lint', script, {
     ...raw === undefined || raw === ''
       ? {}
-      : { displayCommand: `DSH_OXLINT_THREADS=${raw} pnpm run ${script}` },
+      : { displayCommand: `DSH_OXLINT_THREADS=${raw} ${workspaceManager()} run ${script}` },
     ...options.needs === undefined ? {} : { needs: options.needs },
   })
 }
@@ -723,7 +723,7 @@ function coverageGates(platform: NodeJS.Platform = process.platform): Gate[] {
     })
     : pnpmScript('coverage', 'test:coverage:partitioned', {
       label: 'test:coverage',
-      displayCommand: `${COVERAGE_PARTITIONS_ENV}=${partitions} pnpm run test:coverage:partitioned`,
+      displayCommand: `${COVERAGE_PARTITIONS_ENV}=${partitions} ${workspaceManager()} run test:coverage:partitioned`,
       env: { [COVERAGE_EXEMPT_ENV]: '1' },
       streamOutput: true,
     })
@@ -744,7 +744,7 @@ function coverageGates(platform: NodeJS.Platform = process.platform): Gate[] {
 }
 
 // The uninstrumented unit inventory for a whole-inventory reference lane
-// (the Sandbox workflow's darwin parity job). It is `pnpm run test`; the lane
+// (the Sandbox workflow's darwin parity job). It is `${workspaceManager()} run test`; the lane
 // sets DSH_COVERAGE_TEST_TIMEOUT_MS, which vitest.config.ts reads from the
 // inherited environment, because a shared hosted runner delays cases that
 // inherit Vitest's defaults past them. Output streams so the job log keeps

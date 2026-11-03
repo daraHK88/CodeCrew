@@ -17,13 +17,13 @@ CodeCrew 是专注编码的 [DeepSeek Harness](https://github.com/deepseek-ai/de
 
 ## 从源码运行
 
-使用 Node.js 24.9 或更新版本，以及 `package.json` 声明的 pnpm 版本。
+使用最新稳定版 Bun 和 Node.js 24.9 或更新版本。Bun 管理依赖与脚本，现有应用与原生扩展继续使用 Node 和 Electron。
 
 ```sh
 git clone https://github.com/daraHK88/CodeCrew.git
 cd CodeCrew
-pnpm install --frozen-lockfile
-pnpm run build
+bun install --frozen-lockfile
+bun run build
 node coding/setup.mjs
 DSH_HOME="$PWD/.coding-home" node --import tsx/esm apps/cli/src/bin.ts coding --no-open
 ```

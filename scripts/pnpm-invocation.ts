@@ -1,4 +1,5 @@
-/** Resolve shell-free child-process invocations for the pnpm process that launched a package script. */
+/** Resolve shell-free pnpm invocations for retained artifact packaging. */
+import { pnpmCommand } from './release/process.ts'
 
 /**
  * Resolve pnpm's executable and arguments from its lifecycle environment.
@@ -13,6 +14,10 @@ export function pnpmInvocation(
   const entrypoint = environment.npm_execpath
   if (entrypoint === undefined || entrypoint === '') {
     throw new Error('pnpm invocation: npm_execpath is unavailable; invoke the script through pnpm run.')
+  }
+  if (/[\\/]bun(?:\.exe)?$/iu.test(entrypoint)) {
+    const [command, ...prefix] = pnpmCommand()
+    return { command, args: [...prefix, ...args] }
   }
   if (/\.[cm]?js$/iu.test(entrypoint)) {
     return { command: process.execPath, args: [entrypoint, ...args] }

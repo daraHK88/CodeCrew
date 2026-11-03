@@ -22,7 +22,7 @@ import {
 } from './client-build-environment.ts'
 import { aggregateBuildArgs, aggregateCheckArgs, contractSteps, libraryBuildSteps } from './compile-referenced-projects.ts'
 import type { LibraryStep } from './compile-referenced-projects.ts'
-import { pnpmCommand } from './release/process.ts'
+import { workspaceInvocation, workspaceManager } from './workspace-invocation.ts'
 import { defaultParallelism, describeDefaultParallelism } from './parallelism.ts'
 import { runAggregate } from './run-gates.ts'
 import type { Gate } from './run-gates.ts'
@@ -145,8 +145,8 @@ function pnpmGate(
   needs: readonly string[],
   env: Record<string, string | undefined>,
 ): Gate {
-  const [command, ...prefix] = pnpmCommand()
-  return { id, label, displayCommand: `pnpm ${args.join(' ')}`, command, args: [...prefix, ...args], needs: [...needs], env }
+  const invocation = workspaceInvocation(args)
+  return { id, label, displayCommand: `${workspaceManager()} ${args.join(' ')}`, ...invocation, needs: [...needs], env }
 }
 
 /**

@@ -1,5 +1,6 @@
 /** Build and launch the unpackaged Electron shell against the current workspace. */
 
+import { workspaceInvocation } from '../../../scripts/workspace-invocation.ts'
 import { spawn, execFileSync } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
@@ -51,9 +52,10 @@ async function run(command: string, args: readonly string[], cwd: string, enviro
 async function runPackageScript(script: string, cwd: string): Promise<void> {
   const packageManager = process.env.npm_execpath
   if (packageManager === undefined || packageManager === '') {
-    throw new Error('desktop development: invoke this launcher through pnpm run dev:desktop or start:desktop')
+    throw new Error('desktop development: invoke this launcher through bun run dev:desktop or start:desktop')
   }
-  await run(process.execPath, [packageManager, 'run', script], cwd)
+  const invocation = workspaceInvocation(['run', script])
+  await run(invocation.command, invocation.args, cwd)
 }
 
 async function launchElectron(): Promise<void> {
@@ -117,7 +119,7 @@ async function main(): Promise<void> {
     projectDir: join(DEVELOPMENT_ROOT, 'project'),
     cliDir: join(REPOSITORY_ROOT, 'apps', 'cli'),
     hostDir: join(REPOSITORY_ROOT, 'apps', 'desktop-host'),
-    dependencyDir: join(REPOSITORY_ROOT, 'node_modules', '.pnpm', 'node_modules'),
+    dependencyDir: join(REPOSITORY_ROOT, 'node_modules', existsSync(join(REPOSITORY_ROOT, 'node_modules', '.bun')) ? '.bun' : '.pnpm', 'node_modules'),
     release,
     target: resolveDesktopBuildTarget(),
   })

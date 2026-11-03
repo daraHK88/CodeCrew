@@ -11,11 +11,11 @@
   "main": "lib/main.js",
   "scripts": {
     "test:installer": "node scripts/test-windows-installer.mjs",
-    "build": "node ../../node_modules/typescript-native/bin/tsc -b && pnpm run bundle",
+    "build": "node ../../node_modules/typescript-native/bin/tsc -b && bun run bundle",
     "bundle": "tsdown --config-loader native",
     "dev": "tsx scripts/dev.ts",
     "start": "tsx scripts/dev.ts --skip-build",
-    "test:updates:local": "pnpm run build && node scripts/test-local-updater.mjs",
+    "test:updates:local": "bun run build && node scripts/test-local-updater.mjs",
     "prepare:runtime": "tsx scripts/prepare-runtime.ts",
     "render:tray-icon": "tsx scripts/render-tray-icon.ts",
     "prepare:primary-runtime": "tsx scripts/prepare-primary-runtime.ts",
@@ -44,7 +44,8 @@
     "upload:latest:mac:arm64": "tsx scripts/upload-target.ts mac-arm64 --latest",
     "upload:latest:mac:x64": "tsx scripts/upload-target.ts mac-x64 --latest",
     "upload:latest:win:x64": "tsx scripts/upload-target.ts win-x64 --latest",
-    "purge:latest": "tsx scripts/upload-target.ts --latest --purge-only"
+    "purge:latest": "tsx scripts/upload-target.ts --latest --purge-only",
+    "install:electron": "install-electron"
   },
   "dependencies": {
     "electron-updater": "^6.8.9",

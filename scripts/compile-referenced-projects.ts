@@ -8,7 +8,7 @@ import { relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { parseArgs } from 'node:util'
 import ts from 'typescript'
-import { pnpmCommand } from './release/process.ts'
+import { workspaceInvocation, workspaceManager } from './workspace-invocation.ts'
 
 type CompilationMode = 'checked' | 'benchmark-emit'
 
@@ -35,11 +35,11 @@ export interface LibraryStep {
  * @throws If the command cannot start or exits unsuccessfully.
  */
 export function runPnpmCommand(root: string, args: readonly string[]): void {
-  const [command, ...prefix] = pnpmCommand()
-  const result = spawnSync(command, [...prefix, ...args], { cwd: root, stdio: 'inherit' })
+  const invocation = workspaceInvocation(args)
+  const result = spawnSync(invocation.command, invocation.args, { cwd: root, stdio: 'inherit' })
   if (result.error !== undefined) throw result.error
   if (result.status !== 0) {
-    throw new Error(`compile-referenced-projects: pnpm ${args.join(' ')} exited with ${String(result.status ?? result.signal)}`)
+    throw new Error(`compile-referenced-projects: ${workspaceManager()} ${args.join(' ')} exited with ${String(result.status ?? result.signal)}`)
   }
 }
 
@@ -159,8 +159,8 @@ function typertStep(): LibraryStep {
 }
 
 function pnpmStep(id: LibraryStepId, label: string, args: readonly string[], needs: readonly LibraryStepId[]): LibraryStep {
-  const [command, ...prefix] = pnpmCommand()
-  return { id, label, displayCommand: `pnpm ${args.join(' ')}`, command, args: [...prefix, ...args], needs }
+  const invocation = workspaceInvocation(args)
+  return { id, label, displayCommand: `${workspaceManager()} ${args.join(' ')}`, ...invocation, needs }
 }
 
 /**

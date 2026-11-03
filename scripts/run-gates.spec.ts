@@ -277,9 +277,9 @@ describe('gate graph validation', () => {
       displayCommand: 'pnpm exec tsx scripts/run-ci-bench.ts',
       args: ['/private/pnpm.cjs', 'exec', 'tsx', 'scripts/run-ci-bench.ts'],
     })
-    expect(scripts['test:bench']).toBe('npm run build:bench && npm run build:web && npm run test:bench:built')
+    expect(scripts['test:bench']).toBe('bun run build:bench && bun run build:web && bun run test:bench:built')
     expect(scripts['build:bench']).toBe(
-      'npm run build:native-system && npm run build:lib && tsdown --config-loader native --config benchmarks/tsdown.config.ts',
+      'bun run build:native-system && bun run build:lib && tsdown --config-loader native --config benchmarks/tsdown.config.ts',
     )
     expect(scripts['build:native-system']).toBe('tsx native/system/scripts/build.ts --host-addon-only')
     expect(scripts['test:bench:built']).toBe('tsx scripts/run-bench-suite.ts')
@@ -606,7 +606,7 @@ describe('gate graph validation', () => {
       const install = gates.find(gate => gate.id === 'electron-install')
       expect(install).toMatchObject({
         command: process.execPath,
-        args: ['/private/pnpm.cjs', '--filter', '@deepseek-ai/dsh-desktop', 'exec', 'install-electron'],
+        args: ['/private/pnpm.cjs', '--filter', '@deepseek-ai/dsh-desktop', 'run', 'install:electron'],
         env: { ELECTRON_GET_USE_PROXY: '1' },
       })
       expect(gates.find(gate => gate.id === 'built-bin-smoke')?.needs).toContain('electron-install')
@@ -694,7 +694,7 @@ describe('gate graph validation', () => {
       const gates = withEnv('DSH_COVERAGE_TEST_TIMEOUT_MS', budget, () =>
         withPnpmEntrypoint(() => gatesForMode('ci-unit')))
       expect(gates.map(gate => gate.id)).toEqual(['native-system', 'unit'])
-      expect(gates[0]).toMatchObject({ displayCommand: nativeBuild })
+      expect(gates[0]).toMatchObject({ displayCommand: nativeBuild?.replace('bun ', 'pnpm ') })
       expect(gates[1]?.displayCommand).toBe(`pnpm exec ${unitRun}`)
       expect(gates[1]).toMatchObject({
         label: 'test',

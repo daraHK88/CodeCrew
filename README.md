@@ -17,13 +17,13 @@ CodeCrew is a coding-focused fork of [DeepSeek Harness](https://github.com/deeps
 
 ## Run from source
 
-Use Node.js 24.9 or newer and the pnpm version declared in `package.json`.
+Use the latest stable Bun and Node.js 24.9 or newer. Bun manages dependencies and scripts; Node and Electron run the existing application and native addons.
 
 ```sh
 git clone https://github.com/daraHK88/CodeCrew.git
 cd CodeCrew
-pnpm install --frozen-lockfile
-pnpm run build
+bun install --frozen-lockfile
+bun run build
 node coding/setup.mjs
 DSH_HOME="$PWD/.coding-home" node --import tsx/esm apps/cli/src/bin.ts coding --no-open
 ```

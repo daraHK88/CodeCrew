@@ -6,11 +6,11 @@ This profile runs the source checkout with isolated settings and sessions in `.c
 
 ## Run
 
-Use Node 24.9 or newer and the repository's declared pnpm version. Type checks use the local stable native TypeScript 7 checker; generators retain the older compiler API compatibility package.
+Use the latest stable Bun and Node 24.9 or newer. Bun manages installation and scripts; the application retains Node/Electron for native-addon compatibility. Type checks use the local stable native TypeScript 7 checker; generators retain the older compiler API compatibility package.
 
 ```sh
-pnpm install --frozen-lockfile
-pnpm run build
+bun install --frozen-lockfile
+bun run build
 node coding/setup.mjs
 DSH_HOME="$PWD/.coding-home" node --import tsx/esm apps/cli/src/bin.ts coding --no-open --port 3088
 ```
@@ -20,7 +20,7 @@ Open the authenticated URL printed by the launcher and keep it private. Rebuild 
 Run the desktop development app with:
 
 ```sh
-DSH_HOME="$PWD/.coding-home" DSH_DESKTOP_USER_DATA_DIR="$PWD/.coding-home/electron-user-data" DSH_DESKTOP_OPEN_DEVTOOLS=0 pnpm run start:desktop
+DSH_HOME="$PWD/.coding-home" DSH_DESKTOP_USER_DATA_DIR="$PWD/.coding-home/electron-user-data" DSH_DESKTOP_OPEN_DEVTOOLS=0 bun run start:desktop
 ```
 
 The launcher prepares the runtime and creates a local development app. On macOS it lives at `apps/desktop/.desktop-build/development/CodeCrew.app`; keep the source checkout available. Native coding profiles open the workspace directly and configure providers through Settings. No standalone installer is included.
