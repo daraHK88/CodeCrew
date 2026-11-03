@@ -36,7 +36,13 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: node apps/desktop/scripts/preflight-desktop-publish.mjs
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
       - uses: pnpm/action-setup@v5.0.0
+        with:
+          version: 11.28.5
       - uses: actions/setup-node@v7.0.0
         with:
           node-version: '24'
@@ -67,8 +73,13 @@ jobs:
           persist-credentials: false
           clean: false
           path: desktop-publisher
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
       - uses: pnpm/action-setup@v5.0.0
         with:
+          version: 11.28.5
           package_json_file: desktop-publisher/package.json
           dest: ${{ runner.temp }}/publish-pnpm-${{ github.run_id }}-${{ github.run_attempt }}
       - uses: actions/setup-node@v7.0.0
@@ -111,8 +122,13 @@ jobs:
           persist-credentials: false
           clean: false
           path: desktop-publisher
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
       - uses: pnpm/action-setup@v5.0.0
         with:
+          version: 11.28.5
           package_json_file: desktop-publisher/package.json
           dest: ${{ runner.temp }}/publish-pnpm-${{ github.run_id }}-${{ github.run_attempt }}
       - uses: actions/setup-node@v7.0.0

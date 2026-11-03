@@ -176,8 +176,13 @@ jobs:
         with:
           persist-credentials: false
 
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
       - uses: pnpm/action-setup@v5.0.0
         with:
+          version: 11.28.5
           dest: ${{ runner.temp }}/setup-pnpm-js-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}
 
       - name: Enable Windows Developer Mode (symlink support)

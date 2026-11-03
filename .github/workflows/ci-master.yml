@@ -61,8 +61,13 @@ jobs:
         with:
           persist-credentials: false
 
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
       - uses: pnpm/action-setup@v5.0.0
         with:
+          version: 11.28.5
           dest: ${{ runner.temp }}/setup-pnpm-${{ github.run_id }}-${{ github.run_attempt }}
 
       - uses: actions/setup-node@v7.0.0
@@ -158,8 +163,13 @@ jobs:
       - name: Redirect Node compile cache to runner temp
         run: echo "NODE_COMPILE_CACHE=${{ runner.temp }}/node-compile-cache" >> "$GITHUB_ENV"
 
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
       - uses: pnpm/action-setup@v5.0.0
         with:
+          version: 11.28.5
           dest: ${{ runner.temp }}/setup-pnpm-${{ github.run_id }}-${{ github.run_attempt }}
 
       - uses: actions/setup-node@v7.0.0
@@ -202,8 +212,13 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.1
 
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
       - uses: pnpm/action-setup@v5.0.0
         with:
+          version: 11.28.5
           dest: ${{ runner.temp }}/setup-pnpm-${{ github.run_id }}-${{ github.run_attempt }}
 
       - uses: actions/setup-node@v7.0.0
@@ -247,8 +262,13 @@ jobs:
           reg add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock"
           /t REG_DWORD /f /v "AllowDevelopmentWithoutDevLicense" /d "1"
 
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
       - uses: pnpm/action-setup@v5.0.0
         with:
+          version: 11.28.5
           dest: ${{ runner.temp }}/setup-pnpm-${{ github.run_id }}-${{ github.run_attempt }}
 
       - uses: actions/setup-node@v7.0.0
@@ -367,8 +387,13 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.1
 
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
       - uses: pnpm/action-setup@v5.0.0
         with:
+          version: 11.28.5
           dest: ${{ runner.temp }}/setup-pnpm-${{ github.run_id }}-${{ github.run_attempt }}
 
       # The benchmark's Windows lanes deliberately skip the store cache like
@@ -478,8 +503,13 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.1
 
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
       - uses: pnpm/action-setup@v5.0.0
         with:
+          version: 11.28.5
           dest: ${{ runner.temp }}/setup-pnpm-${{ github.run_id }}-${{ github.run_attempt }}
 
       # Unlike the larger-runner suite, both platforms cache the store here:

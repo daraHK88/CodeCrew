@@ -147,8 +147,8 @@ describe('CI workflow', () => {
     const scripts = JSON.parse(readFileSync(resolve(root, 'package.json'), 'utf8')) as { scripts: Record<string, string> }
     const hostSteps = scripts.scripts['build:lib:host']!.split(' && ')
     expect(hostSteps[0]).toBe('tsx scripts/compile-referenced-projects.ts host-libraries')
-    expect(hostSteps).toContain('node --max-old-space-size=8192 ./node_modules/typescript/bin/tsc -p tsconfig.host.json')
-    expect(hostSteps.at(-1)).toBe('pnpm --filter @deepseek-ai/dsh-desktop run bundle')
+    expect(hostSteps).toContain('node --max-old-space-size=8192 ./node_modules/typescript-native/bin/tsc -p tsconfig.host.json')
+    expect(hostSteps.at(-1)).toBe('bun run --filter @deepseek-ai/dsh-desktop bundle')
     expect(scripts.scripts['build:lib:client']).toContain('tsc -b tsconfig.client.json')
     expect(scripts.scripts.typecheck).toBe('tsx scripts/build.ts --scope typecheck')
   })

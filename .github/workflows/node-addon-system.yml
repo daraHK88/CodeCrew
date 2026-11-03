@@ -65,8 +65,13 @@ jobs:
 
       # pnpm v11 ships no darwin-x64 standalone binary, and the pnpm/action-setup
       # v6 self-update path needs one; this job stays on the v5 npm-install line.
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
       - uses: pnpm/action-setup@v5.0.0
         with:
+          version: 11.28.5
           package_json_file: package.json
 
       - uses: actions/setup-node@v7.0.0

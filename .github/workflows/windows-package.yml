@@ -128,8 +128,13 @@ jobs:
           if(branch==='HEAD' || branch!==ref || ref.startsWith('refs/')) throw Error('Select a branch in this repository, not a SHA or PR ref');
           }
           if(!fs.readFileSync('apps/desktop/scripts/desktop-ci-version.mjs','utf8').includes('PACKAGE_VERSION_MODE')) throw Error('Source lacks Desktop channel/version CI support; select a newer release');"
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
       - uses: pnpm/action-setup@v5.0.0
         with:
+          version: 11.28.5
           dest: ${{ runner.temp }}/setup-pnpm-${{ github.run_id }}-${{ github.run_attempt }}
       - uses: actions/setup-node@v7.0.0
         with:
