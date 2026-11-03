@@ -7,7 +7,7 @@ import { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
 import { mountAgentLoopTestDependencies } from '@deepseek-ai/dsh-agent-loop-testkit'
-import { createUserMessage } from '@deepseek-ai/dsh-llm'
+import { createUserMessage, type GenerateOptions } from '@deepseek-ai/dsh-llm'
 import { SessionLogOffset, SessionId, type Session, type SessionEvent } from '@deepseek-ai/dsh-session'
 import * as JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
 import SubagentService from '@deepseek-ai/dsh-subagent'
@@ -1526,13 +1526,15 @@ async function dispatchWorker(ctx: Context, lead: Agent, name: string): Promise<
 }
 
 /** Keep worker streams live independently of supervisor notification turns. */
-async function setupDispatch(maxConcurrentTasks = 2, silentOnce = false) {
+async function setupDispatch(maxConcurrentTasks = 2, silentOnce = false, onStream?: (request: GenerateOptions) => void) {
   const fixture = await setup([], { maxConcurrentTasks })
   let silent = silentOnce
   vi.spyOn(fixture.adapter, 'stream').mockImplementation(async function* (request) {
     fixture.adapter.requests.push(request)
+    onStream?.(request)
     const worker = request.messages.some(message => message.content.some(block => block.type === 'text' && block.text.startsWith('You own task-')))
-    if (!worker || silent) {
+    const supervisorWork = request.messages.some(message => message.content.some(block => block.type === 'text' && block.text === 'SUPERVISOR_ACTIVE_WHILE_WORKERS'))
+    if ((!worker && !supervisorWork) || silent) {
       if (worker) silent = false
       yield* textResponse('Supervisor notified or worker stopped without a report')
       return
@@ -1569,6 +1571,47 @@ describe('Durable supervised dispatch', () => {
     await dispatchWorker(ctx, lead, dependent.name)
     expect(durable(lead).tasks.find(item => item.id === task.id)?.verification).toContain('Supervisor inspected')
     expect(ctx.agentTeams.getTask(lead, task.id).verification).toContain('Supervisor inspected')
+  })
+
+  it('runs three fresh specialists with different models while the supervisor retains its own model and private history', async () => {
+    const workersStarted = Promise.withResolvers<undefined>()
+    const supervisorStarted = Promise.withResolvers<undefined>()
+    const pendingModels = new Set(['html-model', 'css-model', 'js-model'])
+    const { ctx, lead, adapter } = await setupDispatch(3, false, (request) => {
+      if (pendingModels.delete(request.model) && pendingModels.size === 0) workersStarted.resolve(undefined)
+      if (request.model === 'supervisor-model' && JSON.stringify(request.messages).includes('SUPERVISOR_ACTIVE_WHILE_WORKERS')) {
+        supervisorStarted.resolve(undefined)
+      }
+    })
+    lead.model.select({ provider: 'mock', model: 'supervisor-model' })
+    lead.steer(createUserMessage({ source: { kind: 'user' }, content: content('SUPERVISOR_PRIVATE_HISTORY_SENTINEL') }))
+    await lead.whenIdle()
+    const assignments = await Promise.all(['html', 'css', 'js'].map(async role => ({
+      ...await queueTask(ctx, lead, `${role}-specialist`, [], [`src/${role}`]),
+      agentOptions: { provider: 'mock', model: `${role}-model` },
+    })))
+    await ctx.agentTeams.queueTasks(lead, assignments)
+    await workersStarted.promise
+    const workers = assignments.map((assignment) => {
+      const member = ctx.agentTeams.listMembers(lead).find(item => item.name === assignment.name)
+      const worker = member === undefined ? undefined : ctx.agents.get(member.id)
+      if (worker === undefined) throw new Error('Started specialist is not registered')
+      return worker
+    })
+    lead.steer(createUserMessage({ source: { kind: 'user' }, content: content('SUPERVISOR_ACTIVE_WHILE_WORKERS') }))
+    await supervisorStarted.promise
+    expect(lead.status).toBe('running')
+    expect(workers.every(worker => worker.status === 'running')).toBe(true)
+    expect(lead.model.current()?.model).toBe('supervisor-model')
+    expect(ctx.agentTeams.listMembers(lead).find(member => member.name === 'lead')?.model).toBe('supervisor-model')
+    workers[0]?.model.select({ provider: 'mock', model: 'revised-html-model' })
+    expect(ctx.agentTeams.listMembers(lead).find(member => member.name === 'html-specialist')?.model).toBe('revised-html-model')
+    for (const [i, worker] of workers.entries()) {
+      const request = adapter.requests.find(request => request.sessionId === worker.id)
+      expect(request?.model).toBe(assignments[i]?.agentOptions.model)
+      expect(JSON.stringify(request?.messages)).not.toContain('SUPERVISOR_PRIVATE_HISTORY_SENTINEL')
+      expect(JSON.stringify(request?.messages)).toContain(assignments[i]?.name.split('-')[0])
+    }
   })
 
   it('serializes overlapping shared writes until the first result is accepted', async () => {
@@ -1610,10 +1653,22 @@ describe('Durable supervised dispatch', () => {
     await teamFiber.dispose()
     await ctx.plugin(TeamService, { maxConcurrentTasks: 1 })
     await vi.waitFor(() => { expect(ctx.agentTeams.listDispatches(lead).find(item => item.taskId === running.taskId)?.phase).toBe('blocked') })
-    expect(ctx.agentTeams.listDispatches(lead).find(item => item.taskId === queued.taskId)?.phase).toBe('queued')
+    await dispatchWorker(ctx, lead, queued.name)
     expect(ctx.agentTeams.listMembers(lead).filter(item => item.name === running.name)).toHaveLength(1)
     await ctx.agentTeams.cancelDispatch(lead, running.taskId)
     await dispatchWorker(ctx, lead, queued.name)
+  })
+
+  it('keeps unrelated work moving when a stopped worker retains unfinished write ownership', async () => {
+    const { ctx, lead } = await setupDispatch(1, true)
+    const stopped = await queueTask(ctx, lead, 'stopped-css', [], ['src/styles.css'])
+    const conflict = await queueTask(ctx, lead, 'conflicting-css', [], ['src/styles.css'])
+    const independent = await queueTask(ctx, lead, 'independent-js', [], ['src/app.js'])
+    await ctx.agentTeams.queueTasks(lead, [stopped, conflict, independent])
+    await vi.waitFor(() => { expect(ctx.agentTeams.listDispatches(lead).find(item => item.taskId === stopped.taskId)?.phase).toBe('blocked') })
+    await dispatchWorker(ctx, lead, independent.name)
+    expect(ctx.agentTeams.listMembers(lead).some(item => item.name === conflict.name)).toBe(false)
+    expect(ctx.agentTeams.getTask(lead, stopped.taskId).status).toBe('in_progress')
   })
 
   it('validates the entire batch before admitting any assignment', async () => {

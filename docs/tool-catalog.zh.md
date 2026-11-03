@@ -2610,6 +2610,10 @@ Source: [`packages/experimental/tool-agent-team/src/index.ts`](../packages/exper
 {
   "type": "object",
   "properties": {
+    "select_supervisor": {
+      "type": "boolean",
+      "description": "Explicitly switch the Lead to the configured supervisor profile. Omit to preserve its current model and context cache; worker model profiles never change the Lead."
+    },
     "goal": {
       "type": "string",
       "description": "Overall user goal; required for the first coding dispatch, saved without an extra checkpoint call."

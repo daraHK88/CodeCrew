@@ -250,10 +250,8 @@ export class TeamDispatcher {
       }
     }
     let occupied = this.journal.state(root).dispatches.filter((item) => {
-      const task = this.journal.state(root).tasks.find(task => task.id === item.taskId)
       const member = this.roster.list(this.roster.membership(root)).find(member => member.name === item.name)
       return item.phase === 'starting' || item.phase === 'running' || item.phase === 'waiting' || member?.status === 'running'
-        || (item.phase === 'blocked' && task?.status === 'in_progress')
     }).length
     const ready: { assignment: TeamDispatchSnapshot; brief: string; scopes: readonly string[] }[] = []
     for (const assignment of this.journal.state(root).dispatches) {

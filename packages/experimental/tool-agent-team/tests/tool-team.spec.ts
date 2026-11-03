@@ -1072,7 +1072,7 @@ it('dispatches an approved route and exposes bounded reports without accepting w
   expect(text(await execute(ctx, lead, 'team_dispatch', { ...args, assignments: [{ ...args.assignments[0], model_profile: 'unknown' }] }))).toContain('Unknown worker model profile')
   expect(ctx.agentTeams.listDispatches(lead)).toHaveLength(0)
   expect(text(await execute(ctx, lead, 'team_dispatch', args))).toContain('"queued":1')
-  expect(lead.model.current()).toMatchObject({ provider: 'mock', model: 'capable-supervisor' })
+  expect(lead.model.current()).toMatchObject({ provider: 'mock', model: 'mock' })
   const worker = await vi.waitFor(() => {
     const member = ctx.agentTeams.listMembers(lead).find(item => item.name === 'dispatched-reader')
     expect(member?.status).toBe('running')
@@ -1136,4 +1136,59 @@ it('routes substantial automatic UI work to the approved Lead profile without ch
   lead.model.select({ provider: 'mock', model: 'mock' })
   await lead.ctx.serial('skills/automatic-selected', input)
   expect(lead.model.current()?.model).toBe('mock')
+})
+
+it('changes the supervisor model only when dispatch explicitly requests the configured phase', async () => {
+  const { ctx, lead, fiber } = await setup(['hang'])
+  await fiber.dispose()
+  await ctx.plugin(toolTeam, { coding: { supervisorProfile: 'planner', requireTaskBrief: true,
+    defaultWorkerProfile: 'reader', workerProfiles: {
+      reader: { provider: 'mock', model: 'independent-reader' },
+      planner: { provider: 'mock', model: 'intentional-supervisor' },
+    },
+  } } as never)
+  const task = await ctx.agentTeams.createTask(lead, { subject: 'Read source', description:
+    '## Objective\nRead source.\n## Inputs\nsrc/example.js\n## Scope\nNone; read-only.\n## Acceptance\nConcrete findings.\n## Verification\nInspect assertions.\n## Stop conditions\nReport missing input.' })
+  expect(text(await execute(ctx, lead, 'team_dispatch', { select_supervisor: true, goal: 'Inspect source',
+    assignments: [{ task_id: task.id, expected_revision: task.revision, name: 'phase-reader', model_profile: 'reader' }],
+  }))).toContain('"queued":1')
+  expect(lead.model.current()?.model).toBe('intentional-supervisor')
+  expect(ctx.agentTeams.listDispatches(lead)[0]?.agentOptions?.model).toBe('independent-reader')
+})
+
+it('routes three unpinned assignments in one advisor request without changing the supervisor', async () => {
+  const { ctx, lead, fiber } = await setup(['hang', 'hang', 'hang'])
+  await ctx.plugin(MemoryCredentials, { OPENROUTER_API_KEY: 'fixture-key' })
+  await fiber.dispose()
+  await ctx.plugin(toolTeam, { coding: { supervisorProfile: 'planner', requireTaskBrief: true,
+    defaultWorkerProfile: 'reader', workerProfiles: {
+      reader: { provider: 'mock', model: 'scoped-reader' },
+      implementer: { provider: 'mock', model: 'scoped-implementer' },
+      planner: { provider: 'mock', model: 'scoped-planner' },
+    }, decisions: { ...decisionDefaults, enabled: true, autoRouteWorkers: true, maxCallsPerTurn: 1 },
+  } } as never)
+  const tasks = await Promise.all(['html', 'css', 'js'].map(name => ctx.agentTeams.createTask(lead, {
+    subject: name, writeScopes: [`src/${name}`], description:
+      `## Objective\nImplement the ${name} feature.\n## Inputs\nShared component specification.\n## Scope\nsrc/${name}\n## Acceptance\nMeet the supplied interface.\n## Verification\nRun focused checks.\n## Stop conditions\nReport missing inputs.`,
+  })))
+  const fetcher = vi.fn<typeof fetch>().mockImplementation((_url, init) => {
+    if (typeof init?.body !== 'string') throw new Error('Expected a JSON request body')
+    const body = JSON.parse(init.body) as { questions: Record<string, unknown> }
+    expect(Object.keys(body.questions)).toHaveLength(3)
+    return Promise.resolve(Response.json({ model: 'jev-fixture', answers: Object.fromEntries(
+      Object.keys(body.questions).map((id, i) => [id, { type: 'choice', choice: `profile_${i}`, confidence: 1,
+        probabilities: { profile_0: i === 0 ? 1 : 0, profile_1: i === 1 ? 1 : 0, profile_2: i === 2 ? 1 : 0 } }]),
+    ) }))
+  })
+  vi.stubGlobal('fetch', fetcher)
+  try {
+    const result = await execute(ctx, lead, 'team_dispatch', { goal: 'Build independent components',
+      assignments: tasks.map((task, i) => ({ task_id: task.id, expected_revision: task.revision, name: `component-${i}`, isolation: 'shared' })),
+    })
+    expect(text(result)).toContain('"queued":3')
+    expect(fetcher).toHaveBeenCalledTimes(1)
+    expect(ctx.agentTeams.listDispatches(lead).map(item => item.agentOptions?.model))
+      .toEqual(['scoped-reader', 'scoped-implementer', 'scoped-planner'])
+    expect(lead.model.current()?.model).toBe('mock')
+  } finally { vi.unstubAllGlobals() }
 })

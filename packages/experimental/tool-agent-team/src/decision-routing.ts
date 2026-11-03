@@ -81,26 +81,53 @@ export function installDecisionSkillRouting(
 export async function routeDecisionWorker(
   advisor: Advisor, settings: CodingTeamSettings, task: string, signal: AbortSignal,
 ): Promise<{ profileName: string; receipt?: string }> {
+  const [route] = await routeDecisionWorkers(advisor, settings, [task], signal)
+  return route ?? { profileName: settings.defaultWorkerProfile }
+}
+
+/**
+ * Batch unpinned assignments into bounded advisor requests without copying the Lead conversation.
+ * @param advisor - Shared decision caller and turn budget.
+ * @param settings - Approved profiles and decision limits.
+ * @param tasks - Scoped assignment briefs in result order.
+ * @param signal - Dispatch cancellation.
+ * @returns One approved route per assignment, with the configured default on uncertainty or failure.
+ */
+export async function routeDecisionWorkers(
+  advisor: Advisor, settings: CodingTeamSettings, tasks: readonly string[], signal: AbortSignal,
+): Promise<{ profileName: string; receipt?: string }[]> {
   const fallback = { profileName: settings.defaultWorkerProfile }
+  const routes: { profileName: string; receipt?: string }[] = tasks.map(() => ({ ...fallback }))
   const policy = settings.decisions
-  if (!policy?.enabled || !policy.autoRouteWorkers || routineDecisionTask(task)) return fallback
+  if (!policy?.enabled || !policy.autoRouteWorkers) return routes
   const profiles = Object.entries(settings.workerProfiles)
-  if (profiles.length < 2 || profiles.length > policy.maxOptions) return fallback
-  const input: DecisionInput = { context: task, questions: [{ id: 'profile',
-    question: 'Choose the least expensive sufficient approved role for this assignment. Reader handles lookups and mechanical edits; implementer handles coding; planner handles difficult design/reasoning; reviewer handles independent review. Names describe roles; no extra agent is required.',
-    options: profiles.map(([name, profile], index) => ({ id: `profile_${index}`,
-      description: `${name}: ${profile.provider}/${profile.model}, reasoning ${profile.reasoningEffort ?? 'default'}` })),
-  }] }
-  try {
-    const result = await advisor.ask(input, signal)
-    const decision = result.decisions[0]
-    const chosen = profiles.find((_, index) => decision?.choice === `profile_${index}`)
-    const profileName = chosen?.[0] ?? fallback.profileName
-    return { profileName, receipt: JSON.stringify({ profile: profileName, status: decision?.status ?? 'uncertain',
-      confidence: decision?.confidence ?? 0, model: result.model, elapsedMs: result.elapsedMs }) }
-  } catch (error: unknown) {
-    signal.throwIfAborted()
-    if (!(error instanceof DecisionError)) throw error
-    return { ...fallback, receipt: `Configured default retained: ${error.code}` }
+  if (profiles.length < 2 || profiles.length > policy.maxOptions) return routes
+  const pending = tasks.flatMap((task, index) => routineDecisionTask(task) ? [] : [{ task, index }])
+  for (let start = 0; start < pending.length; start += policy.maxQuestions) {
+    const batch = pending.slice(start, start + policy.maxQuestions)
+    const input: DecisionInput = {
+      context: batch.map(item => batch.length === 1 ? item.task : `Assignment profile_${item.index}:\n${item.task}`).join('\n\n'),
+      questions: batch.map(item => ({
+        id: batch.length === 1 ? 'profile' : `profile_${item.index}`,
+        question: 'Choose the least expensive sufficient approved role for this assignment. Reader handles lookups and mechanical edits; implementer handles coding; planner handles difficult design/reasoning; reviewer handles independent review. Names describe roles; no extra agent is required.',
+        options: profiles.map(([name, profile], index) => ({ id: `profile_${index}`,
+          description: `${name}: ${profile.provider}/${profile.model}, reasoning ${profile.reasoningEffort ?? 'default'}` })),
+      })),
+    }
+    try {
+      const result = await advisor.ask(input, signal)
+      for (const [offset, item] of batch.entries()) {
+        const decision = result.decisions[offset]
+        const chosen = profiles.find((_, index) => decision?.choice === `profile_${index}`)
+        const profileName = chosen?.[0] ?? fallback.profileName
+        routes[item.index] = { profileName, receipt: JSON.stringify({ profile: profileName, status: decision?.status ?? 'uncertain',
+          confidence: decision?.confidence ?? 0, model: result.model, elapsedMs: result.elapsedMs }) }
+      }
+    } catch (error: unknown) {
+      signal.throwIfAborted()
+      if (!(error instanceof DecisionError)) throw error
+      for (const item of batch) routes[item.index] = { ...fallback, receipt: `Configured default retained: ${error.code}` }
+    }
   }
+  return routes
 }

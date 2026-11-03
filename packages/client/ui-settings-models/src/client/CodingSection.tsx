@@ -35,7 +35,7 @@ export interface CodingValues {
 export const codingEn = {
   title: 'Coding', intro: 'Use small models for routine work and scoped workers for larger tasks. These settings apply across workspaces.',
   defaultModel: 'Default model', defaultHint: 'Used for new chats. Changing a model inside a chat affects that chat only.',
-  supervisor: 'Supervisor profile for delegated work', supervisorCurrent: 'Keep the current chat model', supervisorHint: 'Switch the lead to this approved profile for dispatched planning and integration. Small direct edits keep the chat model.',
+  supervisor: 'Optional supervisor phase profile', supervisorCurrent: 'Keep the current chat model', supervisorHint: 'Available for an explicit supervisor phase change. Dispatch otherwise keeps the lead model; each worker uses its own assigned model.',
   uiProfile: 'UI design and build profile', uiProfileHint: 'Use this approved lead profile for substantial UI work selected by automatic skills. Exact visual edits keep the chat model.',
   workers: 'Worker models', workerHint: 'The supervisor selects a profile for each assignment. Reader is the default for delegated lookups.',
   decisions: 'Decision advisor', decisionEnabled: 'Use a decision model for ambiguous choices', decisionModel: 'Decision model ID',

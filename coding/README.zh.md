@@ -29,11 +29,11 @@ DSH_HOME="$PWD/.coding-home" DSH_DESKTOP_USER_DATA_DIR="$PWD/.coding-home/electr
 
 [UI 与项目偏好](UI-PREFERENCES.md) 定义移动优先的视觉参考、字体、层级、首选组件、技术栈与生产交付。Setup 在全局指令旁创建本地 `UI-PREFERENCES.md`，并将工作流链接解析为绝对路径。Agent 在实质性 UI 工作或新项目技术选型时读取，并将相关偏好传给 worker；精确小改保持直接路径。重复运行 setup 会保留已有指令和偏好文件，因此后续工作流更新需明确合并。这些默认值尊重现有项目要求。
 
-Settings → Coding 也可选择委派工作的主管 profile。分派仅将 Lead 下一步模型切换到该获准角色；初始模板使用 planner。小改动保持当前聊天模型。主管选项为空则不切换 Lead，worker 路由仍独立配置。
+Settings → Coding 提供可选的主管阶段 profile。分派默认保留 Lead 模型，仅在显式传入 `select_supervisor: true` 时选择该配置。每个 worker 使用独立分配的模型和新的限定上下文。主管在同一阶段保持模型稳定，不要为状态检查或最终回复把整个历史切换到 reader。
 
 Settings → Coding 控制全局默认模型、reader、implementer、planner、reviewer 配置、任务范围要求、自动技能、记忆和每个 agent 的并行工具调用数。聊天内选择的模型仅对该聊天生效。模型来自现有提供方目录，执行前须有可用认证。
 
-初始默认模型和 reader 使用 Luna，其他角色使用 Sol，均可修改。主管可调用 `select_model_profile` 在需要复杂推理时切换至获准的更强配置，再返回 reader 执行常规工作。切换从下一步生效，不改变全局默认值。Worker 输出限制也可在 profile YAML 中配置。OpenRouter、Anthropic 和 xAI 使用现有 API key 引用；本 fork 未添加通用订阅登录。
+初始默认模型和 reader 使用 Luna，其他角色使用 Sol，均可修改。主管可调用 `select_model_profile` 在需要复杂推理时切换至获准的更强配置，并在该阶段保持稳定；独立常规工作可交给新的 reader。切换从下一步生效，不改变全局默认值。Worker 输出限制也可在 profile YAML 中配置。OpenRouter、Anthropic 和 xAI 使用现有 API key 引用；本 fork 未添加通用订阅登录。
 
 小改动直接执行。复杂任务使用就绪的共享任务，描述须包含非空 Markdown 节 `Objective`、`Inputs`、`Scope`、`Acceptance`、`Verification` 和 `Stop conditions`。独立任务可并行执行，重叠文件写入须协调。只有主管可凭验证证据完成编码任务。面板显示实时依赖图。复杂任务可通过 `team_dispatch` 持久排队授权分派，在并发限额内启动就绪 worker，并在待审查或失败时唤醒主管。写入任务默认使用保留的 worktree；主管须先整合和验证提交再验收依赖。小改动仍直接执行，不保证代码质量。
 

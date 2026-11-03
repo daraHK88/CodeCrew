@@ -123,7 +123,7 @@ member scope 上的一个 `team:policy` 段落说明共享的协作规则；固�
 
 ## 编码策略
 
-`coding.supervisorProfile` 可在分派授权后为 Lead 选择获准 worker profile 路由。排队前验证路由，下一步生效，不改变全局聊天默认值。空值保留 Lead 模型。直接编辑不会触发此切换。
+`team_dispatch` 默认保留 Lead 模型。显式传入 `select_supervisor: true` 才会选择 `coding.supervisorProfile` 指定的获准路由；排队前验证，下一步生效，不改变全局聊天默认值。空值保留 Lead 模型。Worker 路由独立固定，不改变 Lead。未指定模型的 worker brief 按配置的问题数量上限合并请求，并共享既有字节、超时及每轮请求预算；显式模型跳过建议。常规任务保留确定性快速路径，不确定或失败的建议保留默认 worker 配置。
 
 启用 `coding.decisions.enabled` 后，`coding_decide` 提供有界的 OpenRouter 决策建议，与聊天模型分离。它批量处理 Choice、Noul（是非概率）和 Score（有序量表）问题。低于阈值的答案保持不确定；无效或自相矛盾的响应返回脱敏错误码。置信度不超过由概率分布计算的值；Choice/Score 缺少置信度时不作选择，Noul 使用 `abs(2p-1)`。置信度是分布统计量，不是正确性证明。超时、完整文本字节上限和共享的每轮请求预算限制开销。不自动重试或执行工作流动作。仍支持显式选择保留的图像；拒绝远程图像 URL。不返回凭据或提供方错误正文。工具建议单独报告模型、用量和耗时，不混入聊天模型统计。
 

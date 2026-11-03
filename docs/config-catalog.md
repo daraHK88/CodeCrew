@@ -1471,7 +1471,7 @@ export interface Config {
 
 /** Live global coding-team preferences. */
 export interface CodingTeamSettings {
-  /** Approved profile selected for the Lead after authorizing substantial dispatched work; empty retains its current model. */
+  /** Approved Lead route used only when dispatch explicitly requests select_supervisor; empty retains its current model. */
   supervisorProfile?: string
   /** Approved Lead profile for substantial automatically selected UI work; empty keeps the current model. */
   uiProfile?: string

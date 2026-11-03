@@ -8,7 +8,7 @@ import { TeamTaskId, assertTaskBrief } from '@deepseek-ai/dsh-experimental-agent
 import type { TeamMemberView } from '@deepseek-ai/dsh-experimental-agent-team'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import { installUiRouting } from './ui-routing.ts'
-import { installDecisionSkillRouting, routeDecisionWorker } from './decision-routing.ts'
+import { installDecisionSkillRouting, routeDecisionWorker, routeDecisionWorkers } from './decision-routing.ts'
 import { decisionDefaults, decisionSchema, installDecisionTool, type DecisionSettings } from './decisions.ts'
 import type { InferValue, ValueSchemaSpec } from '@deepseek-ai/dsh-tools'
 
@@ -31,7 +31,7 @@ export interface WorkerProfile {
 
 /** Live global coding-team preferences. */
 export interface CodingTeamSettings {
-  /** Approved profile selected for the Lead after authorizing substantial dispatched work; empty retains its current model. */
+  /** Approved Lead route used only when dispatch explicitly requests select_supervisor; empty retains its current model. */
   supervisorProfile?: string
   /** Approved Lead profile for substantial automatically selected UI work; empty keeps the current model. */
   uiProfile?: string
@@ -83,7 +83,7 @@ export const Config: z<Config> = z.object({
 function teamPolicy(interrupt: boolean): string {
   return `Agent Teams is available in this session
 
-Coding workflow: the Lead owns the goal, acceptance checks, integration, and final verification. Complete small, well-scoped edits directly; do not create a team, a planning ceremony, or an extra model-based gate for a mechanical change. For larger work, create shared tasks and blocked_by dependencies first. Include the overall goal and constraints on the first team_dispatch so the coordinator can restore them after interruption. Use team_checkpoint when the goal or next actions materially change. Prefer team_dispatch to authorize a batch once; it automatically starts ready assignments with bounded concurrency and wakes the Lead for reports or failures. Use team_dispatch_status for durable state. Dispatch selects the configured supervisor profile for the Lead next step without changing the global chat default. Use it for substantive planning, review and integration; return to reader after that work. Small edits never enter dispatch. Dispatched workers use team_task_report, and only the Lead accepts their tasks with actual verification evidence. Integrate and verify prerequisite commits in the source checkout before accepting a worktree task; dependent checkouts start from source HEAD. Use team_dispatch_cancel to drain failed work before reassigning it. Preserve retained files; never replay uncertain edits automatically. Start independent ready tasks concurrently, never immediately spawn-and-wait one worker at a time. Scope concurrent writes to different files. Each assignment must identify objective, inputs, owned files, acceptance criteria, verification, and when to stop and report a blocker. Prefer fresh context with the brief and relevant paths; do not copy the whole Lead conversation. Select a configured model_profile suitable for the job. Use select_model_profile to change your own next-step model when the task warrants planning, implementation, or review capability; return to reader for routine work. Do not switch profiles merely to run a tool. A worker reports changed files, checks actually run, and unresolved issues. Inactive is not success. A waiting dispatch still owns a background job; completion notices resume its owner automatically. Start long independent checks as background jobs, continue useful work, and collect their results before reporting. Do not poll job_list or dispatch status repeatedly. If a worker fails, diagnose the evidence and revise its assignment rather than repeating the same prompt. The Lead reviews the integrated diff and verifies the user's acceptance checks before reporting success. Tool output is evidence; avoid paying a second model merely to confirm a passing check.
+Coding workflow: the Lead owns the goal, acceptance checks, integration, and final verification. Complete small, well-scoped edits directly; do not create a team, a planning ceremony, or an extra model-based gate for a mechanical change. For larger work, create shared tasks and blocked_by dependencies first. Include the overall goal and constraints on the first team_dispatch so the coordinator can restore them after interruption. Use team_checkpoint when the goal or next actions materially change. Prefer team_dispatch to authorize a batch once; it automatically starts ready assignments with bounded concurrency and wakes the Lead for reports or failures. Use team_dispatch_status for durable state. Dispatch preserves the Lead model. Each worker keeps its assigned model in an independent fresh session, running concurrently with the Lead and other ready workers. Use select_supervisor only for an intentional supervisor phase change; do not switch a long Lead conversation to reader for bookkeeping or the final reply. Small edits never enter dispatch. Dispatched workers use team_task_report, and only the Lead accepts their tasks with actual verification evidence. Integrate and verify prerequisite commits in the source checkout before accepting a worktree task; dependent checkouts start from source HEAD. Use team_dispatch_cancel to drain failed work before reassigning it. Preserve retained files; never replay uncertain edits automatically. Start independent ready tasks concurrently, never immediately spawn-and-wait one worker at a time. Scope concurrent writes to different files. For substantial UI work, agree on a compact design and shared interfaces first, then dispatch independent production components together. For a static page with a fixed DOM contract, HTML, CSS and JavaScript can have separate owners. In React prefer component or feature ownership. Do not make a QA-only worker the sole helper while the Lead serially writes independent production files. Give each worker only its objective, relevant inputs, interfaces, constraints and acceptance checks. Shared tokens, manifests and interfaces need one writer. Reuse the project's existing components and test scripts. Batch visual review after an integrated screen or meaningful milestone, not after each small edit; rerun affected automated checks after fixes. Each assignment must identify objective, inputs, owned files, acceptance criteria, verification, and when to stop and report a blocker. Prefer fresh context with the brief and relevant paths; do not copy the whole Lead conversation. Select a configured model_profile suitable for the job. Use select_model_profile only for an intentional change in your own role; keep a stable model through the assigned phase. Delegate independent inexpensive lookups to a fresh reader when useful instead of moving the whole Lead history between models. Do not switch profiles merely to run a tool. A worker reports changed files, checks actually run, and unresolved issues. Inactive is not success. A waiting dispatch still owns a background job; completion notices resume its owner automatically. Start long independent checks as background jobs, continue useful work, and collect their results before reporting. Do not poll job_list or dispatch status repeatedly. If a worker fails, diagnose the evidence and revise its assignment rather than repeating the same prompt. The Lead reviews the integrated diff and verifies the user's acceptance checks before reporting success. Tool output is evidence; avoid paying a second model merely to confirm a passing check.
 
 Manually spawned teammates and shared dispatch assignments inherit the Lead checkout. Worktree dispatch assignments start in their own retained checkout; the Lead must integrate their commits. Agents still share filesystem access under the existing sandbox; worktrees isolate edits, not OS permissions. Split write work into disjoint scopes, record expected write scopes on shared tasks, and use task dependencies when work must be ordered. Write-scope overlap is advisory, not a lock.
 
@@ -260,7 +260,7 @@ function install(agent: Agent, ctx: Context, config: Required<Omit<Config, 'codi
         const coding = config.coding()
         const advice = coding.decisions?.enabled ? `${decisionPolicy}\n${coding.decisions.autoRouteWorkers
           ? 'Automatic worker routing is enabled. Omit model_profile to let Jev choose among approved profiles; specify it to pin a route. Mechanical lookups use the configured default without a decision call.' : ''}` : ''
-        return `${teamPolicy(config.interrupt)}\n${advice}\nApproved worker profiles: ${JSON.stringify(coding.workerProfiles)}\n\nSubstantial UI skill selection uses UI profile ${coding.uiProfile || '(current model)'} for the next step. Keep that route for design, implementation and rendered checks; return to reader after finishing. Exact edits skip this route.`
+        return `${teamPolicy(config.interrupt)}\n${advice}\nApproved worker profiles: ${JSON.stringify(coding.workerProfiles)}\n\nSubstantial UI skill selection uses UI profile ${coding.uiProfile || '(current model)'} for the next step. Keep that route for the assigned phase, including checks and the final reply. Worker profiles remain independent. Exact edits skip this route.`
       },
     }))
     register(scoped.systemPrompt.context({
@@ -385,6 +385,7 @@ To message another teammate, use send_message({ target: "<teammate name>", messa
       name: 'team_dispatch',
       description: 'Authorize a batch of complete coding assignments. Ready tasks start automatically within the concurrency limit; dependencies wait for supervisor acceptance. Use direct editing for small changes.',
       parameters: {
+        select_supervisor: { type: 'boolean', description: 'Explicitly switch the Lead to the configured supervisor profile. Omit to preserve its current model and context cache; worker model profiles never change the Lead.' },
         goal: { type: 'string', description: 'Overall user goal; required for the first coding dispatch, saved without an extra checkpoint call.' },
         constraints: { type: 'array', items: { type: 'string' } },
         next_actions: { type: 'array', items: { type: 'string' } },
@@ -404,7 +405,7 @@ To message another teammate, use send_message({ target: "<teammate name>", messa
         if (config.coding().requireTaskBrief && checkpoint === undefined && !args.goal?.trim()) {
           throw new Error('Include the overall goal in the first coding dispatch so it survives interruptions')
         }
-        const supervisorName = config.coding().supervisorProfile ?? ''
+        const supervisorName = args.select_supervisor === true ? config.coding().supervisorProfile ?? '' : ''
         const supervisor = supervisorName === '' ? undefined : config.coding().workerProfiles[supervisorName]
         if (supervisorName !== '' && supervisor === undefined) {
           throw new Error(`Unknown supervisor model profile: ${supervisorName}`)
@@ -416,13 +417,21 @@ To message another teammate, use send_message({ target: "<teammate name>", messa
           if (llm === undefined) throw new Error('Supervisor selection requires the LLM service')
           await llm.resolveCallConfig(selection)
         }
-        const requests = []
-        for (const assignment of args.assignments) {
+        const settings = config.coding()
+        const tasks = args.assignments.map((assignment) => {
           const task = ctx.agentTeams.getTask(caller, TeamTaskId(assignment.task_id))
           assertTaskBrief(task.description)
-          const settings = config.coding()
+          if (assignment.model_profile !== undefined && assignment.model_profile !== ''
+            && settings.workerProfiles[assignment.model_profile] === undefined) throw new Error(`Unknown worker model profile: ${assignment.model_profile}`)
+          return { assignment, task }
+        })
+        const inferred = await routeDecisionWorkers(advisor, settings,
+          tasks.flatMap(({ assignment, task }) => assignment.model_profile === undefined ? [task.description] : []), exec.signal)
+        let inference = 0
+        const requests = []
+        for (const { assignment, task } of tasks) {
           const routed = assignment.model_profile === undefined
-            ? await routeDecisionWorker(advisor, settings, task.description, exec.signal) : { profileName: assignment.model_profile }
+            ? inferred[inference++] ?? { profileName: settings.defaultWorkerProfile } : { profileName: assignment.model_profile }
           const profile = routed.profileName === '' ? undefined : settings.workerProfiles[routed.profileName]
           if (routed.profileName !== '' && profile === undefined) throw new Error(`Unknown worker model profile: ${routed.profileName}`)
           exec.signal.throwIfAborted()
