@@ -27,7 +27,9 @@ DSH_HOME="$PWD/.coding-home" DSH_DESKTOP_USER_DATA_DIR="$PWD/.coding-home/electr
 
 ## 配置
 
-[UI 与项目偏好](UI-PREFERENCES.md) 定义移动优先的视觉参考、字体、层级、首选组件、技术栈与生产交付。Setup 在全局指令旁创建本地 `UI-PREFERENCES.md`，并将工作流链接解析为绝对路径。Agent 在实质性 UI 工作或新项目技术选型时读取，并将相关偏好传给 worker；精确小改保持直接路径。重复运行 setup 会保留已有指令和偏好文件，因此后续工作流更新需明确合并。这些默认值尊重现有项目要求。
+Lead 在实质性 UI 工作前读取简短的 [UI 验收清单](UI-CRITERIA.md)，并根据集成结果验证适用标准。[完整偏好](UI-PREFERENCES.md) 涵盖相关技术栈、字体、落地页和动画选择。Setup 在全局指令旁创建这两个文件，并将工作流链接解析为绝对路径。Worker 只接收相关验收检查和参考路径，不重复项目探索或整个设计工作流。重复运行 setup 会保留已有指令和偏好，因此后续工作流更新需明确合并。当前请求和既有项目要求优先。
+
+该配置还提供带许可证的本地 Phosphor sprite 和[可复用的本地浏览器检查](check-ui.mjs)。检查器使用仓库固定的 Playwright 运行时和已安装的 Chrome，采用隔离配置并等待清理完成；不会下载浏览器。这些 UI 标准适用时，使用 `--hide-scrollbars --contrast`；要求的布局或有界纯色文本检查失败时返回非零退出码。对比度阈值采用 [WCAG 2.2 最低对比度](https://www.w3.org/WAI/WCAG22/Understanding/contrast-minimum.html)。截图和有界报告不能替代任务相关的交互、无障碍或设计检查。
 
 Settings → Coding 提供可选的主管阶段 profile。分派默认保留 Lead 模型，仅在显式传入 `select_supervisor: true` 时选择该配置。每个 worker 使用独立分配的模型和新的限定上下文。主管在同一阶段保持模型稳定，不要为状态检查或最终回复把整个历史切换到 reader。
 

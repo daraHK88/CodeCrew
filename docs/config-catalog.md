@@ -1467,6 +1467,8 @@ export interface Config {
   readonly freshProvider?: string
   /** Continuable-subagent provider used for completed-prefix fork teammates. */
   readonly forkProvider?: string
+  /** Global tools exposed to workers; empty inherits the deployment's tools. Scoped Team and decision tools remain role-owned. */
+  readonly workerTools?: string[]
 }
 
 /** Live global coding-team preferences. */
@@ -4351,7 +4353,7 @@ export interface Config {
 
 - `inject`: `agents` · `tools` · `skills` · `workingDirectory`
 - `refs`: `Volatile` (`@deepseek-ai/cordis`)
-- `source`: [`packages/skill/tool-skill/src/index.ts:104`](../packages/skill/tool-skill/src/index.ts)
+- `source`: [`packages/skill/tool-skill/src/index.ts:105`](../packages/skill/tool-skill/src/index.ts)
 
 ```ts config-catalog
 /** Model-facing skill catalog configuration. */

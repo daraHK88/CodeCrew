@@ -529,7 +529,7 @@
           },
           "description": {
             "type": "string",
-            "description": "Complete task details. For dispatched coding work, use nonempty Markdown sections: ## Objective, ## Inputs, ## Scope, ## Acceptance, ## Verification, ## Stop conditions."
+            "description": "Compact assignment: only relevant paths, interface names, constraints and checks; no transcript or unrelated project brief. Use short bullets under: ## Objective, ## Inputs, ## Scope, ## Acceptance, ## Verification, ## Stop conditions."
           },
           "blocked_by": {
             "type": "array",
@@ -570,7 +570,7 @@
     },
     {
       "name": "team_task_list",
-      "description": "List shared tasks, including readiness, owner, revision, blockers, and write-scope warnings.",
+      "description": "List compact task summaries with revision, owner, blockers and write warnings. Use team_task_get for a complete brief or verification.",
       "parameters": {
         "type": "object",
         "properties": {

@@ -1,0 +1,14 @@
+# UI acceptance checklist
+
+The Lead applies these defaults to substantial UI work, unless the current request or established product overrides them. Record applicable criteria and actual conflicts in the checkpoint; pass only the relevant subset to each worker. Before accepting the integrated UI, check this list against the rendered result, not just passing functional tests.
+
+- Mobile first: usable at 390px, then tablet and desktop; no horizontal overflow, clipped controls or cramped touch targets.
+- Create and inspect a mobile/desktop visual reference before implementation. Preserve its typography, tokens, spacing and component treatment in code; explain material deviations.
+- Use real Phosphor icons consistently, with accessible names on icon-only actions. For dependency-free pages, copy the supplied [local icon set](assets/phosphor/README.md) and its license into the project, or use licensed inline Phosphor SVGs; do not substitute emoji, Unicode arrows or an unrelated icon set.
+- Compact operational hierarchy: status, blockers and next action first; readable typography (14–16px body, 16px mobile inputs, 12–14px secondary text), consistent spacing, strong contrast and useful density. Avoid filler, decorative badges and generic template repetition.
+- Style controls coherently, including sort/filter menus, dialogs, empty and error states. Prefer existing component libraries; never add a dependency solely to restyle one static control.
+- Hide decorative scrollbar chrome on the page and nested scroll regions while preserving scrolling. Check the narrow viewport too, not only the task list. Avoid decorative outlines; retain visible keyboard focus, labels, Escape/close behavior and focus return.
+- Use restrained feedback animation and respect reduced motion. Save cinematic scrolling and elaborate imagery for landing pages.
+- Reuse [the local browser checker](check-ui.mjs): run `node <checker-path> <localhost-url> <output-dir> --hide-scrollbars --contrast` for three responsive screenshots, overflow, visible page-scrollbar and bounded text-contrast checks. Complex backgrounds are skipped and require visual review. A failed required layout check returns a nonzero exit code. Its `withPage` export supports short task-specific functional tests without rewriting browser startup. It uses installed Chrome and the repository runtime; no project install. Verify interactions with affected automated checks, then inspect integrated desktop/mobile views. Batch defects and recheck the affected views; reuse existing browser checks instead of writing a new large harness for every task.
+
+The Lead reports unmet criteria explicitly. A functional test or an attractive screenshot does not establish compliance. Consult [full preferences](UI-PREFERENCES.md) only for new-project stack choices, landing-page art direction, typography details or motion libraries relevant to the current task.

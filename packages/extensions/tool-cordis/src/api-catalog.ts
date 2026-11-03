@@ -5290,8 +5290,8 @@ export const EVENT_API: readonly EventApiEntry[] = [
     name: 'skills/select-automatic',
     mode: 'waterfall',
     signature: '\'skills/select-automatic\'(input: { agent: Agent; task: string; signal: AbortSignal }, next: () => Promise<readonly string[]>): Promise<readonly string[]>',
-    summary: 'Optional fallback after local skill rules miss; the loader enforces visibility and instruction limits.',
-    description: 'Optional fallback after local skill rules miss; the loader enforces visibility and instruction limits.',
+    summary: 'Scoped automatic selection policy; next returns local-rule choices, or an empty list on a miss.',
+    description: 'Scoped automatic selection policy; next returns local-rule choices, or an empty list on a miss. The loader enforces visibility and instruction limits.',
     parameters: [{ name: 'input', description: 'Admitted assignment and calling agent; no conversation history is supplied.' }],
   },
   {

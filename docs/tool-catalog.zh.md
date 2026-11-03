@@ -2739,7 +2739,7 @@ Source: [`packages/experimental/tool-agent-team/src/index.ts`](../packages/exper
     },
     "description": {
       "type": "string",
-      "description": "Complete task details. For dispatched coding work, use nonempty Markdown sections: ## Objective, ## Inputs, ## Scope, ## Acceptance, ## Verification, ## Stop conditions."
+      "description": "Compact assignment: only relevant paths, interface names, constraints and checks; no transcript or unrelated project brief. Use short bullets under: ## Objective, ## Inputs, ## Scope, ## Acceptance, ## Verification, ## Stop conditions."
     },
     "blocked_by": {
       "type": "array",
@@ -2788,7 +2788,7 @@ Source: [`packages/experimental/tool-agent-team/src/index.ts`](../packages/exper
 
 ### `team_task_list`
 
-列出共享任务，包括 readiness、owner、revision、blocker 与 write-scope warning。
+列出简短任务摘要，包含 revision、owner、blocker 与写入范围警告。完整任务说明或验证记录请使用 `team_task_get`。
 
 ```json
 {

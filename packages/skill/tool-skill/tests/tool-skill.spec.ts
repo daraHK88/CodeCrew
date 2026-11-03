@@ -1270,24 +1270,31 @@ describe('automatic coding skills', () => {
   })
 })
 
-it('validates an optional automatic selector and lets local rules take precedence', async () => {
+it('lets scoped policy refine local automatic choices and validates selected skills', async () => {
   const home = await tempDir('automatic-advisor')
   await writeSkill(join(home, '.agents', 'skills'), 'debugging', 'Investigate failures', 'Inspect the failing evidence first.')
   const ctx = await setup(home, { automatic: { enabled: true, maxSkills: 1, maxBytes: 4096,
     rules: [{ keywords: ['local rule'], skills: ['debugging'] }] } })
   const owner = agentForCwd(home)
-  const picker = vi.fn(() => Promise.resolve(['debugging', 'not-installed']))
+  const picker = vi.fn(async (_input: unknown, next: () => Promise<readonly string[]>) => {
+    const local = await next()
+    return local.length > 0 ? local : ['debugging', 'not-installed']
+  })
   const stop = owner.ctx.on('skills/select-automatic', picker)
   try {
     const request = (text: string) => proposeStep(ctx, owner, [createUserMessage({ content: [{ type: 'text', text }], source: { kind: 'user' } })])
     const matched = await request('Use the local rule for this task')
-    expect(picker).not.toHaveBeenCalled()
+    expect(picker).toHaveBeenCalledTimes(1)
     expect(JSON.stringify(matched)).toContain('Inspect the failing evidence first.')
     const suggested = await request('Diagnose an intermittent failure in the login flow')
-    expect(picker).toHaveBeenCalledTimes(1)
+    expect(picker).toHaveBeenCalledTimes(2)
     if (suggested.kind !== 'enter') throw new Error('Expected admitted step')
     expect(suggested.messages.filter(message => message.source.kind === 'skill-automatic')).toHaveLength(1)
     stop()
+    const suppress = owner.ctx.on('skills/select-automatic', () => Promise.resolve([]))
+    const suppressed = await request('Use the local rule for this scoped worker task')
+    expect(JSON.stringify(suppressed)).not.toContain('Inspect the failing evidence first.')
+    suppress()
     const removed = await request('Diagnose an intermittent failure in the login flow')
     if (removed.kind !== 'enter') throw new Error('Expected admitted step')
     expect(removed.messages.some(message => message.source.kind === 'skill-automatic')).toBe(false)
@@ -1323,12 +1330,12 @@ describe('bounded automatic rules and compact discovery', () => {
       rules: [{ pattern: uiPattern, skills: ['missing', 'designing', 'oversized'] }] } })
     ctx.skills.register({ name: 'oversized', description: 'Too large', source: 'runtime', content: 'x'.repeat(5000) })
     const owner = agentForCwd(home)
-    const fallback = vi.fn(() => Promise.resolve([]))
+    const fallback = vi.fn((_input: unknown, next: () => Promise<readonly string[]>) => next())
     const selected = vi.fn()
     owner.ctx.on('skills/select-automatic', fallback)
     owner.ctx.on('skills/automatic-selected', selected)
     const decision = await proposeStep(ctx, owner, [input('Build a polished responsive team analytics dashboard')])
-    expect(fallback).not.toHaveBeenCalled()
+    expect(fallback).toHaveBeenCalledTimes(1)
     expect(JSON.stringify(decision)).toContain('Design and verify responsive states.')
     expect(selected).toHaveBeenCalledWith(expect.objectContaining({ agent: owner, names: ['designing'], task: 'build a polished responsive team analytics dashboard' }))
     for (const text of ['Change the dashboard button label', 'Build the backend dashboard API endpoint']) {

@@ -373,11 +373,12 @@ Source: [`packages/skill/skill/src/index.ts`](../../packages/skill/skill/src/ind
 
 #### `skills/select-automatic` — waterfall
 
-Optional fallback after local skill rules miss; the loader enforces visibility and instruction limits.
+Scoped automatic selection policy; next returns local-rule choices, or an empty list on a miss. The loader enforces visibility and instruction limits.
 
 ```ts cordis-catalog
 /**
- * Optional fallback after local skill rules miss; the loader enforces visibility and instruction limits.
+ * Scoped automatic selection policy; next returns local-rule choices, or an empty list on a miss.
+ * The loader enforces visibility and instruction limits.
  * @mode waterfall
  * @param input - Admitted assignment and calling agent; no conversation history is supplied.
  */

@@ -8,6 +8,7 @@
   config:
     freshProvider: spawn
     forkProvider: fork
+    workerTools: [bash, read, read_image, edit, edit_lines, write, glob, grep, working_directory, skill, skill_search, web_fetch, job_output, job_kill, job_list]
     coding:
       supervisorProfile: planner
       uiProfile: implementer

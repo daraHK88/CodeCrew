@@ -20,6 +20,10 @@ This package lets the model create named teammates, send them messages, inspect 
 - [Known Limitations and Deferred Work](#known-limitations-and-deferred-work)
 - [Dev Note](#dev-note)
 
+Workers receive a short execution policy, their assignment and task-local messages. Lead-only tools and the full coordinator checkpoint are omitted from worker requests; scoped legacy controls cannot restore Lead operations. Automatic whole-interface design workflows run on the Lead. Other local skill rules still apply to workers, who can also explicitly load needed guidance. Project instructions, permissions and revision checks still apply. Task creation, listing and update receipts omit repeated descriptions and verification; `team_task_get` returns the complete current task.
+
+The optional `workerTools` allowlist limits inherited global tool schemas and execution on workers; an empty list preserves deployment defaults. Role-owned Team and decision tools remain scoped. The coding overlay exposes file editing, search, skill lookup, documentation fetch and job collection, leaving scheduling, plugin management and further delegation on the Lead.
+
 -----
 
 <a id="use-this-package"></a>
@@ -130,7 +134,7 @@ The volatile `coding` configuration optionally requires `spawn_teammate` to name
 <a id="automatic-routing-and-bounded-evidence"></a>
 ### Automatic routing and bounded evidence
 
-`autoSelectSkills`, `autoRouteWorkers` and `inspectFiles` default to `false` in the plugin; the CodeCrew profile enables them. Settings → Coding exposes each switch. Local skill rules and explicit invocations take precedence. On an eligible unmatched assignment, Jev picks one permitted skill or none from a local lexical shortlist; the skill loader still enforces visibility and instruction budgets. This adds no selection call to mechanical lookups or exact UI edits. The full skill catalog remains available.
+`autoSelectSkills`, `autoRouteWorkers` and `inspectFiles` default to `false` in the plugin; the CodeCrew profile enables them. Settings → Coding exposes each switch. Local skill rules and explicit invocations take precedence. On an eligible unmatched assignment, Jev picks one permitted skill or none from a local lexical shortlist; the skill loader still enforces visibility and instruction budgets. This adds no selection call to mechanical lookups or exact UI edits. An explicitly bounded style-only repair also skips the advisor when a longer verification brief pushes it above the short-task limit; architecture, migration and security work keep the substantial path. The full skill catalog remains available.
 
 Unpinned substantial worker assignments can use Jev to choose an approved profile; explicit `model_profile` values are preserved. The configured default remains on uncertainty, missing credentials, exhausted budget or service failure. Task readiness and brief validation precede routing. Spawn results retain a compact routing receipt. Routing does not change the supervisor's selected chat model. Automatic skill choices, worker routing and explicit tool advice share `maxCallsPerTurn`; two is the default.
 

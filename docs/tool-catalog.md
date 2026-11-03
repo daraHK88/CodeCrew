@@ -2729,7 +2729,7 @@ Create one unowned pending task on the shared Team task board.
     },
     "description": {
       "type": "string",
-      "description": "Complete task details. For dispatched coding work, use nonempty Markdown sections: ## Objective, ## Inputs, ## Scope, ## Acceptance, ## Verification, ## Stop conditions."
+      "description": "Compact assignment: only relevant paths, interface names, constraints and checks; no transcript or unrelated project brief. Use short bullets under: ## Objective, ## Inputs, ## Scope, ## Acceptance, ## Verification, ## Stop conditions."
     },
     "blocked_by": {
       "type": "array",
@@ -2778,7 +2778,7 @@ Source: [`packages/experimental/tool-agent-team/src/index.ts`](../packages/exper
 
 ### `team_task_list`
 
-List shared tasks, including readiness, owner, revision, blockers, and write-scope warnings.
+List compact task summaries with revision, owner, blockers and write warnings. Use team_task_get for a complete brief or verification.
 
 ```json
 {

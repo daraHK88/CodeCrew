@@ -67,7 +67,8 @@ function catalogSourceEntries(
 declare module '@deepseek-ai/cordis' {
   interface Events {
     /**
-     * Optional fallback after local skill rules miss; the loader enforces visibility and instruction limits.
+     * Scoped automatic selection policy; next returns local-rule choices, or an empty list on a miss.
+     * The loader enforces visibility and instruction limits.
      * @mode waterfall
      * @param input - Admitted assignment and calling agent; no conversation history is supplied.
      */
@@ -271,7 +272,7 @@ export function apply(ctx: Context, config: Config = {}): void {
     const rule = compileRules(automatic.rules).find(({ rule, pattern }) =>
       (rule.keywords.length === 0 ? pattern !== undefined : rule.keywords.some(word => word.trim() && task.includes(word.toLowerCase())))
       && (pattern === undefined || pattern.test(task)))?.rule
-    const selected = rule?.skills ?? await agent.ctx.waterfall('skills/select-automatic', { agent, task, signal }, () => Promise.resolve([]))
+    const selected = await agent.ctx.waterfall('skills/select-automatic', { agent, task, signal }, () => Promise.resolve(rule?.skills ?? []))
     if (selected.length === 0) return decision
     signal.throwIfAborted()
     const lookup = { cwd: await ctx.workingDirectory.ensure(agent, signal), signal, scope: agent }

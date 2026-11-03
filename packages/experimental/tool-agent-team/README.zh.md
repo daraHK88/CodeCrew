@@ -20,6 +20,10 @@ kind: "package-reference"
 - [已知限制与延期工作](#known-limitations-and-deferred-work)
 - [开发备注](#dev-note)
 
+工作成员接收简短的执行规则、自己的任务和与任务相关的消息。成员请求不包含仅限 Lead 的工具或完整的协调器检查点；旧版控制工具也不能恢复 Lead 操作。整个界面的自动设计工作流由 Lead 执行。其他本地技能规则仍适用于成员，成员也可显式加载所需指导。项目指令、权限和修订检查仍然有效。创建、列出和更新任务的回执省略重复的描述和验证文本；`team_task_get` 返回完整的当前任务。
+
+可选 `workerTools` 白名单限制成员继承的全局工具模式及执行；空列表保留部署默认值。角色拥有的 Team 与决策工具仍按作用域提供。编码覆盖配置开放文件编辑、搜索、技能查找、文档获取与任务结果收集，将调度、插件管理和进一步委派留给 Lead。
+
 -----
 
 <a id="use-this-package"></a>
@@ -132,7 +136,7 @@ member scope 上的一个 `team:policy` 段落说明共享的协作规则；固�
 <a id="automatic-routing-and-bounded-evidence"></a>
 ### 自动路由与有界证据
 
-插件中的 `autoSelectSkills`、`autoRouteWorkers` 和 `inspectFiles` 默认为 `false`；CodeCrew profile 启用它们。Settings → Coding 提供各自的开关。本地技能规则和显式调用优先。对符合条件但未匹配规则的任务，Jev 从本地词法短名单中选择一个允许的技能或不选；技能加载器仍执行可见性与指令预算限制。机械查询和精确 UI 修改不增加选择请求。完整技能目录仍可用。
+插件中的 `autoSelectSkills`、`autoRouteWorkers` 和 `inspectFiles` 默认为 `false`；CodeCrew profile 启用它们。Settings → Coding 提供各自的开关。本地技能规则和显式调用优先。对符合条件但未匹配规则的任务，Jev 从本地词法短名单中选择一个允许的技能或不选；技能加载器仍执行可见性与指令预算限制。机械查询和精确 UI 修改不增加选择请求。明确限定为样式修复的任务，即使较长的验证说明超过短任务长度限制，也会跳过建议模型；架构、迁移与安全工作仍保留实质任务路径。完整技能目录仍可用。
 
 未指定模型的较大 worker 任务可让 Jev 选择获准配置；保留显式 `model_profile`。不确定、缺少凭据、预算耗尽或服务失败时保留配置的默认值。任务就绪与简报验证在路由前执行。派生结果保留简短路由记录。路由不改变主管选择的聊天模型。自动技能选择、worker 路由和显式工具建议共享 `maxCallsPerTurn`；默认值为二。
 

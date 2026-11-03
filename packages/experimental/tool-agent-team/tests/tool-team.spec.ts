@@ -56,6 +56,8 @@ const TOOL_NAMES = [
   'team_task_update',
 ].sort()
 
+const WORKER_TOOL_NAMES = ['send_message', 'list_agents', 'wait_agent', 'team_task_list', 'team_task_get', 'team_task_update', 'team_task_report'].sort()
+
 const roots: string[] = []
 const contexts = new Set<Context>()
 let callNumber = 0
@@ -205,7 +207,7 @@ describe('dsh-tool-team', () => {
     for (const agent of [lead, child]) {
       const assembled = await assembly(ctx, agent)
       expect(assembled.tools.map(schema => schema.name).filter(name => TOOL_NAMES.includes(name)).sort())
-        .toEqual(TOOL_NAMES.filter(name => name !== 'interrupt_agent'))
+        .toEqual(agent === lead ? TOOL_NAMES.filter(name => name !== 'interrupt_agent') : WORKER_TOOL_NAMES)
       expect(renderPrompt(assembled)).not.toContain('interrupt_agent')
       const result = await execute(ctx, agent, 'interrupt_agent', { target: 'worker' })
       expect(result.isError).toBe(true)
@@ -251,7 +253,7 @@ describe('dsh-tool-team', () => {
     expect(ctx.agentTeams.listMembers(lead)[1]).toMatchObject({ id: childId, name: member.target, status: 'inactive' })
   })
 
-  it('installs the complete scoped schema and shared-checkout policy for roots and teammates', async () => {
+  it('gives workers scoped tools and a compact policy without supervisor context', async () => {
     const { ctx, lead } = await setup(['hang'])
     const leadAssembly = await assembly(ctx, lead)
     expect(leadAssembly.tools.map(schema => schema.name).filter(name => TOOL_NAMES.includes(name)).sort())
@@ -265,6 +267,7 @@ describe('dsh-tool-team', () => {
     expect(leadPrompt).not.toContain('Your Team role')
     expect(renderContextSnapshot(leadAssembly)).toContain('You are the Team Lead named "lead".')
 
+    await ctx.agentTeams.updateCheckpoint(lead, { expectedRevision: 0, goal: 'unrelated supervisor goal', constraints: ['supervisor-only context'], nextActions: ['another assignment'] })
     const spawned = await execute(ctx, lead, 'spawn_teammate', {
       name: 'tool-worker',
       description: 'exercise scoped tools',
@@ -275,9 +278,17 @@ describe('dsh-tool-team', () => {
     const child = await waitRunning(ctx, childId)
     const childAssembly = await assembly(ctx, child)
     expect(childAssembly.tools.map(schema => schema.name).filter(name => TOOL_NAMES.includes(name)).sort())
-      .toEqual(TOOL_NAMES)
-    expect(renderPrompt(childAssembly)).toBe(leadPrompt)
+      .toEqual(WORKER_TOOL_NAMES)
+    const childPrompt = renderPrompt(childAssembly)
+    expect(childPrompt).toContain('Complete only your assigned task')
+    expect(childPrompt).not.toContain('Approved worker profiles')
+    expect(Buffer.byteLength(childPrompt)).toBeLessThan(Buffer.byteLength(leadPrompt) / 2)
+    expect(childAssembly.contexts.find(context => context.name === 'team:checkpoint')?.text ?? '').toBe('')
     expect(renderContextSnapshot(childAssembly)).toContain('You are teammate "tool-worker".')
+    expect(renderContextSnapshot(childAssembly)).not.toContain('unrelated supervisor goal')
+    const automatic = await child.ctx.waterfall('skills/select-automatic', { agent: child, task: 'Implement dashboard behavior', signal: SIGNAL }, () => Promise.resolve(['design-distinctive-frontends']))
+    expect(automatic).toEqual([])
+    expect(await child.ctx.waterfall('skills/select-automatic', { agent: child, task: 'Diagnose an assigned failure', signal: SIGNAL }, () => Promise.resolve(['diagnosing-bugs']))).toEqual(['diagnosing-bugs'])
     expect(childAssembly.contexts).toContainEqual(expect.objectContaining({ name: 'team:identity' }))
     const initialPrompt = child.session.snapshotEvents().find(event => event.type === 'user/message'
       && event.data.source.kind === 'user')
@@ -289,7 +300,7 @@ describe('dsh-tool-team', () => {
       name: 'nested', description: 'not allowed', prompt: 'no',
     })
     expect(denied.isError).toBe(true)
-    expect(text(denied)).toContain('only the Team Lead')
+    expect(text(denied)).toContain('unknown tool')
     await execute(ctx, lead, 'interrupt_agent', { target: 'tool-worker' })
     await vi.waitFor(() => { expect(ctx.agents.get(childId)).toBeUndefined() }, { timeout: 5_000 })
   })
@@ -309,12 +320,12 @@ describe('dsh-tool-team', () => {
     const childId = spawnedChildId(ctx, lead, spawned)
     await waitNoAgent(ctx, childId)
     const childRequest = serializeRequest(adapter.requests[1]!)
-    expect(childRequest.tools).toEqual(parentRequest.tools)
-    expect(childRequest.system).toEqual(parentRequest.system)
+    expect(childRequest.tools?.map(tool => tool.name).sort()).toEqual(WORKER_TOOL_NAMES)
+    expect(childRequest.system).not.toEqual(parentRequest.system)
     expect(childRequest.system).not.toContain('Your Team role')
     if (mode === 'fork') {
       expect(childRequest.messages.slice(0, parentRequest.messages.length)).toEqual(parentRequest.messages)
-      expect(adapter.requests[1]!.messages.slice(0, parentHistory.length)).toEqual(parentHistory)
+      expect(adapter.requests[1]!.messages.slice(0, parentHistory.length).filter(message => message.role !== 'system')).toEqual(parentHistory.filter(message => message.role !== 'system'))
     } else {
       expect(JSON.stringify(childRequest.messages)).not.toContain('Parent task')
     }
@@ -377,9 +388,10 @@ describe('dsh-tool-team', () => {
       const original = serializeRequest(adapter.requests.find(request => request.sessionId === teammateId)!)
       const forkRequest = adapter.requests.find(request => request.sessionId === handle.agent.id)!
       const fork = serializeRequest(forkRequest)
-      expect(fork.tools).toEqual(original.tools)
+      expect(fork.tools?.map(tool => tool.name).sort()).toEqual(TOOL_NAMES)
+      expect(fork.tools).not.toEqual(original.tools)
       expect(fork.messages.slice(0, original.messages.length)).toEqual(original.messages)
-      expect(forkRequest.messages.slice(0, inheritedHistory.length)).toEqual(inheritedHistory)
+      expect(forkRequest.messages.slice(0, inheritedHistory.length).filter(message => message.role !== 'system')).toEqual(inheritedHistory.filter(message => message.role !== 'system'))
       expect(fork.messages.at(-1)?.content).toContainEqual({ type: 'text', text: 'Continue independently' })
       expect(runtimeContextText(forkRequest)).toContain('You are the Team Lead named "lead".')
       expect(handle.agent.session.snapshotEvents().slice(0, seed.length)).toEqual(seed)
@@ -531,13 +543,16 @@ describe('dsh-tool-team', () => {
     const listed = await execute(ctx, child, 'team_task_list', { ready: true, limit: 1 })
     expect(JSON.parse(text(listed))).toMatchObject({ tasks: [{ id: task.id, ready: true }] })
     const read = await execute(ctx, child, 'team_task_get', { task_id: task.id })
-    expect(JSON.parse(text(read))).toMatchObject({ id: task.id, revision: 1 })
+    expect(JSON.parse(text(read))).toMatchObject({ id: task.id, revision: 1, description: 'created through tool' })
+    expect(text(created)).not.toContain('created through tool')
+    expect(text(listed)).not.toContain('created through tool')
     const claimed = await execute(ctx, child, 'team_task_update', {
       task_id: task.id,
       expected_revision: task.revision,
       action: 'claim',
     })
     expect(JSON.parse(text(claimed))).toMatchObject({ status: 'in_progress', ownerName: 'json-worker' })
+    expect(text(claimed)).not.toContain('created through tool')
     const stale = await execute(ctx, lead, 'team_task_update', {
       task_id: task.id,
       expected_revision: task.revision,
@@ -660,7 +675,7 @@ describe('dsh-tool-team', () => {
     for (const agent of [lead, child]) {
       const assembled = await assembly(ctx, agent)
       expect(assembled.tools.map(schema => schema.name).filter(name => TOOL_NAMES.includes(name)).sort())
-        .toEqual(TOOL_NAMES.filter(name => name !== 'interrupt_agent'))
+        .toEqual(agent === lead ? TOOL_NAMES.filter(name => name !== 'interrupt_agent') : WORKER_TOOL_NAMES)
       expect(renderPrompt(assembled)).not.toContain('interrupt_agent')
     }
     expect(child.status).toBe('running')
@@ -670,7 +685,7 @@ describe('dsh-tool-team', () => {
     expect((await assembly(ctx, lead)).tools.map(schema => schema.name).filter(name => TOOL_NAMES.includes(name)).sort())
       .toEqual(TOOL_NAMES)
     expect((await assembly(ctx, child)).tools.map(schema => schema.name).filter(name => TOOL_NAMES.includes(name)).sort())
-      .toEqual(TOOL_NAMES)
+      .toEqual(WORKER_TOOL_NAMES)
     await execute(ctx, lead, 'interrupt_agent', { target: 'hmr-worker' })
     await vi.waitFor(() => { expect(ctx.agents.get(childId)).toBeUndefined() }, { timeout: 5_000 })
     await replacement.dispose()
@@ -685,6 +700,29 @@ describe('dsh-tool-team', () => {
     await fiber.dispose()
     const legacySchema = (await assembly(ctx, lead)).tools.find(schema => schema.name === 'send_message')
     expect(JSON.stringify(legacySchema)).toContain('agent_id')
+  })
+
+  it('limits worker global tools without hiding execution tools, changing the Lead or surviving HMR disposal', async () => {
+    const { ctx, lead, fiber } = await setup(['hang'], true)
+    await fiber.dispose()
+    for (const name of ['read_fixture', 'unrelated_management']) ctx.tools.register(defineContentToolFixture({
+      name, description: name, parameters: {}, async execute() { return [{ type: 'text', text: name }] },
+    }))
+    const restricted = await ctx.plugin(toolTeam, { workerTools: ['read_fixture'] })
+    const spawned = await execute(ctx, lead, 'spawn_teammate', { name: 'scoped-worker', description: 'read one input', prompt: 'read fixture' })
+    expect(spawned.isError, text(spawned)).toBe(false)
+    const child = await waitRunning(ctx, spawnedChildId(ctx, lead, spawned))
+    const names = (await assembly(ctx, child)).tools.map(tool => tool.name)
+    expect(names).toContain('read_fixture')
+    expect(names).toContain('team_task_report')
+    expect(names).not.toContain('unrelated_management')
+    expect(names).not.toContain('spawn_teammate')
+    expect((await execute(ctx, child, 'unrelated_management', {})).isError).toBe(true)
+    expect((await execute(ctx, child, 'read_fixture', {})).isError).toBe(false)
+    expect((await assembly(ctx, lead)).tools.map(tool => tool.name)).toContain('unrelated_management')
+    await restricted.dispose()
+    expect((await assembly(ctx, child)).tools.map(tool => tool.name)).toContain('unrelated_management')
+    ctx.agentTeams.interrupt(lead, 'scoped-worker')
   })
 
   it('rolls back partial scoped installation after a same-scope collision', async () => {
@@ -749,8 +787,8 @@ describe('dsh-tool-team', () => {
     expect(receipt.messageId).toEqual(expect.any(String))
     const resumed = await waitRunning(ctx, childId)
     expect((await assembly(ctx, resumed)).tools.map(schema => schema.name)
-      .filter(name => TOOL_NAMES.includes(name)).sort()).toEqual(TOOL_NAMES.filter(name => interrupt || name !== 'interrupt_agent'))
-    expect(renderPrompt(await assembly(ctx, resumed)).includes('interrupt_agent')).toBe(interrupt)
+      .filter(name => TOOL_NAMES.includes(name)).sort()).toEqual(WORKER_TOOL_NAMES)
+    expect(renderPrompt(await assembly(ctx, resumed))).not.toContain('interrupt_agent')
     expect(renderContextSnapshot(await assembly(ctx, resumed))).toContain('You are teammate "cold-worker".')
     const childRequests = () => adapter.requests.filter(request => request.messages.some(message => message.role === 'user'
       && message.content.some(block => block.type === 'text' && block.text.includes('You are teammate "cold-worker".'))))
@@ -1001,6 +1039,29 @@ it('loads Jev-selected permitted skills automatically and shares the turn budget
     expect(JSON.stringify(adapter.requests[0]?.messages)).toContain('SYNTHETIC_DEBUGGING_INSTRUCTIONS')
     expect(JSON.stringify(lead.session.snapshotEvents())).toContain('Decision request budget reached')
     expect(fetcher).toHaveBeenCalledTimes(1)
+  } finally { vi.unstubAllGlobals() }
+})
+
+it('keeps a bounded styling repair off the advisor and full design workflow even with a detailed verification brief', async () => {
+  const { ctx, lead, fiber, adapter } = await setup([textResponse('Apply the scoped style repair directly.')])
+  await ctx.plugin(MemoryCredentials, { OPENROUTER_API_KEY: 'fixture-key' })
+  await ctx.plugin(SkillRegistry)
+  ctx.skills.register({ name: 'impeccable', description: 'Review UI scrollbar styling, spacing and visual defects', source: 'runtime', content: 'FULL_INTERFACE_REVIEW_SENTINEL' })
+  await ctx.plugin(ToolSkill, { automatic: { enabled: true, maxSkills: 1, maxBytes: 12000, rules: [] } } as never)
+  await fiber.dispose()
+  await ctx.plugin(toolTeam, { coding: { requireTaskBrief: false, defaultWorkerProfile: '', workerProfiles: {},
+    decisions: { ...decisionDefaults, enabled: true, autoSelectSkills: true },
+  } } as never)
+  const fetcher = vi.fn<typeof fetch>().mockResolvedValue(Response.json({ model: 'jev-fixture', answers: {
+    skill: { type: 'choice', choice: 'skill_0', confidence: 1, probabilities: { none: 0, skill_0: 1 } },
+  } }))
+  vi.stubGlobal('fetch', fetcher)
+  const brief = 'Independent final review found one missed UI criterion: the page scrollbar is visible at the narrow viewport, although the task-list scrollbar is hidden. Fix only this styling defect directly. Preserve scrolling, visible keyboard focus, icons, data and working interactions. Keep your current model and use no workers. Run the existing affected viewport checks before reporting, keeping their output in the local report directory. Do not rewrite the dashboard, alter unrelated styles, change the fixture data, add dependencies, install a new browser or publish remotely. Leave the established component hierarchy and responsive breakpoints unchanged.'
+  expect(brief.length).toBeGreaterThan(500)
+  try {
+    await runTurn(lead, brief)
+    expect(fetcher).not.toHaveBeenCalled()
+    expect(JSON.stringify(adapter.requests[0]?.messages)).not.toContain('FULL_INTERFACE_REVIEW_SENTINEL')
   } finally { vi.unstubAllGlobals() }
 })
 

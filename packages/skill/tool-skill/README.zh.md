@@ -20,6 +20,8 @@ agent 可以在会话期间发现并加载 skill。当 `skill` 工具可见时�
 - [已知限制与延期工作](#known-limitations-and-deferred-work)
 - [开发备注](#dev-note)
 
+作用域内的 `skills/select-automatic` 瀑布事件可以调整或抑制本地规则选择；`next()` 返回匹配规则的结果，未命中时返回空列表。兜底选择器应保留非空结果。即使抑制自动工作流，显式 `/name` 调用和 `skill` 工具仍然可用。
+
 -----
 
 <a id="use-this-package"></a>

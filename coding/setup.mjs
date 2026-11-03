@@ -10,8 +10,18 @@ const create = async (path, value) => {
   try { await writeFile(path, value, { flag: 'wx', mode: 0o600 }) }
   catch (error) { if (error.code !== 'EEXIST') throw error }
 }
+const uiAssets = join(home, 'ui-assets', 'phosphor')
+await mkdir(uiAssets, { recursive: true, mode: 0o700 })
+for (const file of ['icons.svg', 'LICENSE', 'README.md', 'README.zh.md', 'README.i18n.yaml']) {
+  await create(join(uiAssets, file), await readFile(join(root, 'coding', 'assets', 'phosphor', file)))
+}
+const criteria = (await readFile(join(root, 'coding', 'UI-CRITERIA.md'), 'utf8'))
+  .replace('(assets/phosphor/README.md)', `(<${join(uiAssets, 'README.md')}>)`)
+  .replace('(check-ui.mjs)', `(<${join(root, 'coding', 'check-ui.mjs')}>)`)
+await create(join(home, 'UI-CRITERIA.md'), criteria)
 await create(join(home, 'UI-PREFERENCES.md'), await readFile(join(root, 'coding', 'UI-PREFERENCES.md')))
 const workflow = (await readFile(join(root, 'coding', 'AGENTS.md'), 'utf8'))
+  .replace('(UI-CRITERIA.md)', `(<${join(home, 'UI-CRITERIA.md')}>)`)
   .replace('(UI-PREFERENCES.md)', `(<${join(home, 'UI-PREFERENCES.md')}>)`)
 await create(join(home, 'AGENTS.md'), workflow)
 const packages = []

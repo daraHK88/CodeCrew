@@ -77,4 +77,21 @@ Separately, the real skill plugin on the same 109-entry synthetic catalog produc
 
 The dispatcher preserves the Lead model unless `select_supervisor` explicitly requests a phase change. Fresh worker sessions retain independent model routes and do not copy the supervisor conversation. A barrier-based test keeps one supervisor and three specialist model requests in flight simultaneously. Another test proves that a stopped blocked CSS assignment releases execution capacity for unrelated JavaScript while continuing to block conflicting CSS writes. Both the implicit Lead switch and stopped-worker capacity cases failed against the prior behavior before their fixes. Three unpinned assignments now share one decision-advisor request within the existing request budget.
 
-These are deterministic runtime tests with a mock model adapter, not measured live-model speedups or cost savings. The affected tests run with `bun run vitest run packages/experimental/agent-team/tests/team.spec.ts packages/experimental/tool-agent-team/tests/tool-team.spec.ts`. Real dashboard timing still needs a controlled rerun with the same starting files, brief and quality checks; prior session measurements above remain historical evidence.
+These are deterministic runtime tests with a mock model adapter, not measured live-model speedups or cost savings. The affected tests run with `bun run vitest run packages/experimental/agent-team/tests/team.spec.ts packages/experimental/tool-agent-team/tests/tool-team.spec.ts`. The controlled reruns below use the same starting files and brief; prior measurements above remain historical evidence.
+
+## Scoped worker context and UI criteria
+
+The next dashboard runs kept the six initial files and prompt identical. Workers now receive role-specific policy and tools, no supervisor checkpoint, and no automatic whole-interface design workflow. Full task descriptions remain available through explicit reads. The coding profile supplies a licensed local Phosphor sprite, a short UI checklist and a reusable browser checker.
+
+| Observation | Previous parallel run | Diagnostic candidate | Final initial run | Final with repairs |
+| --- | ---: | ---: | ---: | ---: |
+| Active time | 406.23s | 710.03s | 438.26s | 522.51s |
+| All-agent total tokens | 3,191,609 | 5,158,227 | 1,966,764 | 2,942,774 |
+| Uncached input | 138,810 | 208,851 | 100,937 | 116,755 |
+| Output | 28,287 | 33,792 | 21,859 | 23,075 |
+
+The diagnostic candidate remained slower and used more tokens despite smaller worker policy. Its renderer failed after a rebuild while the Host continued; no turn gap was recorded. The final candidate reduced worker tool schemas from 47 to 23, schema bytes from 41,866 to 16,555, and system-message bytes from 13,664 to 6,758. Briefs included reference paths and relevant visual criteria. CSS and JavaScript workers overlapped. The Lead created and inspected mobile/desktop references, reused the browser helper and shipped the original Phosphor sprite.
+
+Independent review found visible page scrollbar chrome after the initial run. A separate 52.67-second style repair hid it while preserving scrolling; the checker now rejects that defect when `--hide-scrollbars` is required. A further 31.57-second correction fixed four low-contrast count labels and marked a decorative separator; the shared checker now offers a required bounded solid-text contrast check. The scrollbar repair also exposed an unnecessary automatic full-design skill on a detailed mechanical request. A regression check rejects that prior routing and verifies no advisor call or full-design instructions on a bounded repair. This last routing correction has deterministic coverage, not a fresh live latency measurement.
+
+Including both repairs, total tokens fell 8%, uncached input 16% and output 18% versus the previous parallel run; active time increased 29%. The initial run alone used 38% fewer total tokens. Neither result establishes lower billing or a speedup. The evaluator review gap is excluded from active time. Actual interactions, focus containment, Escape/close/focus return and responsive layouts were checked independently. This static fixture does not exercise the preferred production application stack or constitute a complete accessibility audit.

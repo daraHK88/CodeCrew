@@ -16,7 +16,11 @@ type Advisor = ReturnType<typeof installDecisionTool>
  */
 export function routineDecisionTask(task: string): boolean {
   const text = task.trim()
-  return text.length < 12 || /\bcoding_decide\b/.test(text) || (text.length < 500 && (
+  const scopedStyleFix = text.length < 1500 && /\bfix only\b/i.test(text)
+    && /\b(?:scrollbar|padding|margin|spacing|font size|color|border radius)\b/i.test(text)
+    && /\b(?:preserv\w*|unchanged|no workers|directly)\b/i.test(text)
+    && !/\b(?:redesign|architecture|migration|refactor|authentication|authorization)\b/i.test(text)
+  return scopedStyleFix || text.length < 12 || /\bcoding_decide\b/.test(text) || (text.length < 500 && (
     /^(?:please\s+)?(?:read|list|show|open|cat|grep|find the file|run (?:the )?(?:tests?|build|lint|typecheck))\b/i.test(text)
     || (/\b(?:rename|replace|change|update)\b.{0,100}/i.test(text)
       && /\b(?:button text|label|copy|word|spacing|padding|margin|icon|literal|string)\b/i.test(text))

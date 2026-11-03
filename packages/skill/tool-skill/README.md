@@ -20,6 +20,8 @@ Agents can discover and load skills during a session. When the `skill` tool is v
 - [Known Limitations and Deferred Work](#known-limitations-and-deferred-work)
 - [Dev Note](#dev-note)
 
+The scoped `skills/select-automatic` waterfall can refine or suppress local-rule choices; `next()` returns the matched rule or an empty list. A fallback selector should retain a nonempty result. Explicit `/name` invocation and the `skill` tool remain available when an automatic workflow is suppressed.
+
 -----
 
 <a id="use-this-package"></a>
