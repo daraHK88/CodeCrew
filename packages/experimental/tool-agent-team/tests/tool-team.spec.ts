@@ -27,7 +27,8 @@ import { mountWorkingDirectoryFixture } from '../../../subagent/subagent/tests/w
 import TeamService from '../../agent-team/src/index.ts'
 import * as toolTeam from '../src/index.ts'
 import { MemoryCredentials } from '../../../credentials/credentials/tests/memory.ts'
-import { decisionDefaults } from '../src/decisions.ts'
+import { decisionDefaults, decisionTextBytes, type DecisionAdvisor, type DecisionInput } from '../src/decisions.ts'
+import { routeWorkerAssignments } from '../src/worker-skills.ts'
 import SkillRegistry from '@deepseek-ai/dsh-skill'
 import * as ToolSkill from '@deepseek-ai/dsh-tool-skill'
 
@@ -1252,4 +1253,121 @@ it('routes three unpinned assignments in one advisor request without changing th
       .toEqual(['scoped-reader', 'scoped-implementer', 'scoped-planner'])
     expect(lead.model.current()?.model).toBe('mock')
   } finally { vi.unstubAllGlobals() }
+})
+
+it('chooses per-worker models and skills together, injects only each selected skill and retains the choices durably', async () => {
+  const { ctx, lead, fiber, adapter } = await setup(['hang', 'hang'])
+  await ctx.plugin(MemoryCredentials, { OPENROUTER_API_KEY: 'fixture-key' })
+  await ctx.plugin(SkillRegistry)
+  ctx.skills.register({ name: 'css-layout', description: 'CSS grid responsive typography', source: 'runtime', content: 'CSS_ONLY_SENTINEL' })
+  ctx.skills.register({ name: 'javascript-events', description: 'JavaScript event handlers state', source: 'runtime', content: 'JS_ONLY_SENTINEL' })
+  ctx.skills.register({ name: 'manual-only', description: 'CSS JavaScript', source: 'runtime', content: 'NEVER_INJECT', invocation: { modelInvocable: false, userInvocable: true } })
+  await ctx.plugin(ToolSkill, { automatic: { enabled: true, maxSkills: 1, maxBytes: 4096, rules: [] } } as never)
+  await fiber.dispose()
+  await ctx.plugin(toolTeam, { coding: { requireTaskBrief: true, defaultWorkerProfile: 'implementer', workerProfiles: {
+    reader: { provider: 'mock', model: 'cheap-inspection' }, implementer: { provider: 'mock', model: 'capable-coding' },
+  }, decisions: { ...decisionDefaults, enabled: true, autoRouteWorkers: true, autoSelectSkills: true, maxCallsPerTurn: 1 } } } as never)
+  const tasks = []
+  for (const [index, objective] of ['CSS grid responsive typography', 'JavaScript event handlers state'].entries()) {
+    tasks.push(await ctx.agentTeams.createTask(lead, { subject: objective, writeScopes: [`src/part-${index}`], description:
+      `## Objective\n${objective}.\n## Inputs\nProvided interfaces.\n## Scope\nsrc/part-${index}\n## Acceptance\nMeet the supplied interface.\n## Verification\nRun focused checks.\n## Stop conditions\nReport missing inputs.` }))
+  }
+  const fetcher = vi.fn<typeof fetch>().mockImplementation((_url, init) => {
+    if (typeof init?.body !== 'string') throw new Error('Expected JSON decision input')
+    const body = JSON.parse(init.body) as { state: string[]; questions: Record<string, { criteria: Record<string, string> }> }
+    expect(Object.keys(body.questions)).toEqual(['profile_0', 'skill_0', 'profile_1', 'skill_1'])
+    expect(body.state.join('')).not.toContain('SENTINEL')
+    expect(init.body).not.toContain('manual-only')
+    return Promise.resolve(Response.json({ model: 'jev-fixture', answers: Object.fromEntries(Object.entries(body.questions).map(([id, question]) => {
+      const choice = id.startsWith('profile') ? 'profile_1' : Object.entries(question.criteria).find(([, text]) => text.includes(id === 'skill_0' ? 'css-layout' : 'javascript-events'))![0]
+      return [id, { type: 'choice', choice, confidence: 1, probabilities: Object.fromEntries(Object.keys(question.criteria).map(key => [key, key === choice ? 1 : 0])) }]
+    })) }))
+  })
+  vi.stubGlobal('fetch', fetcher)
+  try {
+    const result = await execute(ctx, lead, 'team_dispatch', { goal: 'Integrate two independent files', assignments: tasks.map((task, i) => ({
+      task_id: task.id, expected_revision: task.revision, name: `skilled-${i}`, isolation: 'shared',
+    })) })
+    expect(text(result)).toContain('"queued":2')
+    await vi.waitFor(() => { expect(adapter.requests.filter(request => request.sessionId !== lead.id)).toHaveLength(2) })
+    const members = ctx.agentTeams.listMembers(lead)
+    for (let index = 0; index < 2; index++) {
+      const request = adapter.requests.find(request => request.sessionId === members.find(member => member.name === `skilled-${index}`)?.id)!
+      const messages = JSON.stringify(request.messages)
+      expect(request.model).toBe('capable-coding')
+      expect(request.tools?.some(tool => tool.name === 'coding_decide')).toBe(false)
+      expect(messages).toContain(index === 0 ? 'CSS_ONLY_SENTINEL' : 'JS_ONLY_SENTINEL')
+      expect(messages).not.toContain(index === 0 ? 'JS_ONLY_SENTINEL' : 'CSS_ONLY_SENTINEL')
+    }
+    expect(fetcher).toHaveBeenCalledTimes(1)
+    expect(ctx.agentTeams.listDispatches(lead).map(item => item.skills)).toEqual([['css-layout'], ['javascript-events']])
+  } finally { vi.unstubAllGlobals() }
+})
+
+it('exposes only bounded coordination controls to a dispatched supervisor and keeps the Lead checkpoint protected', async () => {
+  const { ctx, lead } = await setup(['hang', 'hang'])
+  const brief = '## Objective\nCoordinate UI components.\n## Inputs\nShared contract.\n## Scope\nsrc/ui\n## Acceptance\nVerified children.\n## Verification\nInspect child checks.\n## Stop conditions\nReport blockers.'
+  const task = await ctx.agentTeams.createTask(lead, { subject: 'UI package', description: brief, writeScopes: ['src/ui'] })
+  expect(text(await execute(ctx, lead, 'team_dispatch', { goal: 'Build UI', assignments: [{ task_id: task.id,
+    expected_revision: 1, name: 'ui-manager', role: 'supervisor', skills: [] }] }))).toContain('"queued":1')
+  const supervisor = await vi.waitFor(() => {
+    const member = ctx.agentTeams.listMembers(lead).find(member => member.name === 'ui-manager')
+    expect(member?.status).toBe('running')
+    return ctx.agents.get(member!.id)!
+  })
+  for (const name of ['team_task_create', 'team_dispatch', 'team_dispatch_status', 'team_dispatch_cancel']) expect(ctx.tools.get(name, supervisor)).toBeDefined()
+  for (const name of ['spawn_teammate', 'team_checkpoint', 'select_model_profile', 'interrupt_agent']) expect(ctx.tools.get(name, supervisor)).toBeUndefined()
+  expect(text(await execute(ctx, supervisor, 'team_dispatch', { goal: 'Replace root goal', assignments: [] }))).toContain('Only the Lead')
+  const child = await execute(ctx, supervisor, 'team_task_create', { parent_task_id: task.id,
+    subject: 'Component', description: brief, write_scopes: ['src/ui/component.tsx'] })
+  expect(text(child)).toContain('parentTaskId')
+  const parsed = JSON.parse(text(child)) as { id: string; revision: number }
+  expect(text(await execute(ctx, supervisor, 'team_dispatch', { assignments: [{ task_id: parsed.id,
+    expected_revision: parsed.revision, name: 'ui-component', isolation: 'shared', skills: [] }] }))).toContain('"queued":1')
+  expect(ctx.agentTeams.getCheckpoint(lead)?.goal).toBe('Build UI')
+  const worker = await vi.waitFor(() => {
+    const member = ctx.agentTeams.listMembers(lead).find(member => member.name === 'ui-component')
+    expect(member?.status).toBe('running')
+    return ctx.agents.get(member!.id)!
+  })
+  expect(renderContextSnapshot(await assembly(ctx, worker))).toContain('Your assignment supervisor is named "ui-manager"')
+  const visible = JSON.parse(text(await execute(ctx, worker, 'team_task_list', {}))) as { tasks: { id: string }[] }
+  expect(visible.tasks.map(task => task.id)).toEqual([parsed.id])
+})
+
+
+it('packs ten worker routes by complete escaped request bytes instead of dropping an oversized question batch', async () => {
+  const { ctx, lead } = await setup([])
+  const policy = { ...decisionDefaults, enabled: true, autoRouteWorkers: true, maxQuestions: 8, maxTextBytes: 2500 }
+  const requests: DecisionInput[] = []
+  const advisor: DecisionAdvisor = Object.assign(() => undefined, { ask: async (input: DecisionInput) => {
+    expect(decisionTextBytes(policy, input)).toBeLessThanOrEqual(policy.maxTextBytes)
+    requests.push(input)
+    return { model: 'fixture', requestedModel: 'fixture', elapsedMs: 0, images: [],
+      decisions: input.questions.map(question => ({ id: question.id, type: 'choice' as const, status: 'decided' as const,
+        choice: 'profile_0', confidence: 1, noul: null, score: null, distribution: [] })),
+      usage: { inputTokens: null, outputTokens: null, cost: null } }
+  } })
+  const routes = await routeWorkerAssignments(ctx, lead, Array.from({ length: 10 }, (_, index) => ({
+    task: `Implement component ${index}: ${'quoted "context" '.repeat(40)}`, skills: undefined, profileName: undefined, supervisor: false,
+  })), advisor, { requireTaskBrief: true, defaultWorkerProfile: 'implementer', decisions: policy, workerProfiles: {
+    reader: { provider: 'mock', model: 'cheap' }, implementer: { provider: 'mock', model: 'capable' },
+  } }, SIGNAL)
+  expect(requests.length).toBeGreaterThan(1)
+  expect(requests.flatMap(input => input.questions)).toHaveLength(10)
+  expect(routes.every(route => route.profileName === 'reader')).toBe(true)
+})
+
+it('routes a six-section read-only lookup to the reader without a Jev call or the implementation default', async () => {
+  const { ctx, lead } = await setup([])
+  const ask = vi.fn<DecisionAdvisor['ask']>()
+  const advisor: DecisionAdvisor = Object.assign(() => undefined, { ask })
+  const routes = await routeWorkerAssignments(ctx, lead, [{
+    task: '## Objective\nRead src/config.ts and list its exports.\n## Inputs\nsrc/config.ts\n## Scope\nNone; read-only.\n## Acceptance\nExact export names.\n## Verification\nCheck the declaration lines.\n## Stop conditions\nReport a missing file.',
+    skills: undefined, profileName: undefined, supervisor: false,
+  }], advisor, { requireTaskBrief: true, defaultWorkerProfile: 'implementer', workerProfiles: {
+    reader: { provider: 'mock', model: 'cheap' }, implementer: { provider: 'mock', model: 'capable' },
+  }, decisions: { ...decisionDefaults, enabled: true, autoRouteWorkers: true, autoSelectSkills: true } }, SIGNAL)
+  expect(routes).toEqual([{ profileName: 'reader', skills: [] }])
+  expect(ask).not.toHaveBeenCalled()
 })

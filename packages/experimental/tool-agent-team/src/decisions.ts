@@ -128,6 +128,25 @@ function validateInput(settings: DecisionSettings, input: DecisionInput): void {
 /** Image bytes already belong to a durable, immutable session attachment. */
 export interface DecisionImage { attachmentId: string; mediaType: string; data: Uint8Array }
 
+/** The text-only provider envelope shared by size checks and submission. */
+function decisionTextBody(settings: DecisionSettings, input: DecisionInput) {
+  return { model: settings.model, state: [input.context], questions: Object.fromEntries(input.questions.map(question => [question.id, {
+    type: question.type ?? 'choice', instructions: question.question,
+    ...question.type === 'noul' ? {} : { criteria: question.type === 'score'
+      ? question.levels : Object.fromEntries(question.options.map(option => [option.id, option.description])) },
+  }])) }
+}
+
+/**
+ * Complete text bytes across the admission input and provider envelope, including escaped metadata.
+ * @param settings - decision model and request policy.
+ * @param input - compact decision questions and context.
+ * @returns the larger complete text byte count used at admission or submission.
+ */
+export function decisionTextBytes(settings: DecisionSettings, input: DecisionInput): number {
+  return Math.max(Buffer.byteLength(JSON.stringify(input)), Buffer.byteLength(JSON.stringify(decisionTextBody(settings, input))))
+}
+
 /**
  * Shared decision budget owned by one calling agent and its registration lifetime.
  */
@@ -161,12 +180,8 @@ export async function submitDecision(
   for (const image of images) state.push({
     type: 'image_url', image_url: { url: `data:${image.mediaType};base64,${Buffer.from(image.data).toString('base64')}` },
   })
-  const body = { model: settings.model, state, questions: Object.fromEntries(input.questions.map(question => [question.id, {
-    type: question.type ?? 'choice', instructions: question.question,
-    ...question.type === 'noul' ? {} : { criteria: question.type === 'score'
-      ? question.levels : Object.fromEntries(question.options.map(option => [option.id, option.description])) },
-  }])) }
-  if (Buffer.byteLength(JSON.stringify({ ...body, state: [input.context] }), 'utf8') > settings.maxTextBytes) {
+  const body = { ...decisionTextBody(settings, input), state }
+  if (decisionTextBytes(settings, input) > settings.maxTextBytes) {
     throw new DecisionError('DECISION_INPUT_LIMIT', 'Complete decision text exceeds the configured request budget.')
   }
   const deadline = AbortSignal.timeout(settings.timeoutMs)
@@ -273,9 +288,10 @@ const decisionResultSchema = {
  * @param ctx - exact calling agent scope and its credential/attachment capabilities.
  * @param agent - owner of the retained input and per-turn request budget.
  * @param settings - live global decision policy.
+ * @param exposeTool - whether this role may request advice directly; leaf workers use their supervisor's routing.
  * @returns Callable registration disposer and shared budgeted decision caller.
  */
-export function installDecisionTool(ctx: Context, agent: Agent, settings: () => DecisionSettings): DecisionAdvisor {
+export function installDecisionTool(ctx: Context, agent: Agent, settings: () => DecisionSettings, exposeTool = true): DecisionAdvisor {
   let budget = { turn: -1, calls: 0 }
   const stopStep = ctx.on('agent/pre-step', async (input, next) => {
     if (input.agent === agent && budget.turn !== input.turn) budget = { turn: input.turn, calls: 0 }
@@ -353,6 +369,6 @@ export function installDecisionTool(ctx: Context, agent: Agent, settings: () => 
       })).sort((a, b) => b.probability - a.probability) : []
       return { ...result, sources: inspected.sources, reviewDepth, ranking }
     },
-  }), { when: () => settings().enabled })
+  }), { when: () => exposeTool && settings().enabled })
   return Object.assign(() => { stopTool(); stopStep() }, { ask })
 }

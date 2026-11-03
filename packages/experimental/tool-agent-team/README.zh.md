@@ -133,6 +133,8 @@ member scope 上的一个 `team:policy` 段落说明共享的协作规则；固�
 
 动态 `coding` 配置可要求 `spawn_teammate` 指定就绪的 `task_id`，且任务须包含非空 Markdown 节：Objective、Inputs、Scope、Acceptance、Verification 和 Stop conditions。任务描述加入 worker 提示词。`model_profile` 选择获准的 `workerProfiles` 路由，否则采用可选自动路由或 `defaultWorkerProfile`；提供方、模型、推理强度和输出上限通过原生 subagent 选项传入。启用 `requireTaskBrief` 时，仅 Lead 能完成任务，并须提供非空验证证据。`select_model_profile` 经 LLM 配置验证后，在下一步为调用 agent 选择获准路由，不保存全局默认值；worker 输出限制不改变调用者的输出限制。`team_dispatch` 提供持久的就绪任务调度；主管仍须独立验证证据。即使手动委派不要求 brief，分派也始终要求完整 brief。写入任务默认使用 worktree；明确只读的任务可共享 checkout，Scope 须以 `None` 开头。获准模型路由在排队时固定，全局设置变化不会暗中改写已授权任务。并发上限由 Team 服务配置。失败或取消后须先检查，再以新的 worker 名字重新授权。
 
+`team_dispatch.assignments` 支持工作包角色 `role: supervisor`，以及由确切允许名称组成的 `skills`。省略技能时执行有界自动选择，`[]` 则禁用；模型和技能问题在同一建议批次共享任务上下文。排队前校验技能可见性与完整正文预算，仅在对应 worker 加载正文。主管获得受限的创建、分派、取消和状态工具，并凭证据验收后代任务；项目检查点、直接创建成员、中断和 Lead 模型控制仍属于根。worker 任务列表仅返回自身，主管列表返回工作包及后代。
+
 <a id="automatic-routing-and-bounded-evidence"></a>
 ### 自动路由与有界证据
 
@@ -166,7 +168,7 @@ member scope 上的一个 `team:policy` 段落说明共享的协作规则；固�
 
 #### 模型看到什么
 
-共享系统 policy 覆盖 Team 可用性、共享 cwd 安全、任务协调、Steer 投递、inbox 接收和 Lead 等待责任。Lead 与 teammate 使用相同的十个 schema；执行时落实 Lead-only 操作。必需的 runtime context 声明 `You are the Team Lead named "lead".`，或 `You are teammate "<name>".` 与 `Your Team Lead is named "lead".`，并提供 roster 和消息操作说明。身份来自当前 Team membership，关闭可选 context 时仍保留，压缩移除快照后会恢复。从 teammate 创建的普通 fork 会收到当前 Lead 身份。
+共享系统 policy 覆盖 Team 可用性、共享 cwd 安全、任务协调、Steer 投递、inbox 接收和 Lead 等待责任。Lead、工作包主管和叶子 worker 使用各自的工具 schema，执行操作时再次验证权限。必需的 runtime context 声明 `You are the Team Lead named "lead".`，或 `You are teammate "<name>".` 与 `Your Team Lead is named "lead".`，并提供 roster 和消息操作说明。身份来自当前 Team membership，关闭可选 context 时仍保留，压缩移除快照后会恢复。从 teammate 创建的普通 fork 会收到当前 Lead 身份。
 
 #### Token 影响
 

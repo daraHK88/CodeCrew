@@ -103,7 +103,7 @@ The service is built on one separation and three commitments:
 
 - **Durable log, derived state.** The Lead log owns roster and tasks; each target Agent owns its accepted messages.
 - **Process-local ownership.** Continuation delivery owns target locking, cold recovery, and lifecycle authorization.
-- **Explicit authority.** Every service method takes the exact live calling `Agent`; only the Lead spawns, reassigns, or interrupts.
+- **Explicit authority.** Every service method takes the exact live calling `Agent`; only the Lead spawns directly or interrupts; delegated supervisors manage their own task descendants.
 - **Bounds that fail loud.** Every limit is a validated deployment value, and exhaustion reports a typed error instead of reusing an id or name.
 
 The [Agent Teams Agent Note](../../../.agents/notes/implemented/feature/2026-08-05-agent-teams.md) owns the roster, mailbox, task, and shared-checkout decisions. The [runtime-context identity decision](../../../.agents/notes/implemented/architecture/2026-10-13-team-identity-runtime-context.md) owns model-facing identity.
@@ -145,7 +145,7 @@ Roster and task mutations append `team/member` and `team/task` to the exact live
 
 Historical mailbox events and `team-message` sources remain readable, and the projection still reports queued-minus-delivered records. Team never delivers or acknowledges them: a historical message that its target had not recorded stays undelivered.
 
-Mailbox projection and checkpoint admission preserve every decoded JSON field of accepted content outside the locally declared validators, including an own `__proto__` key. Local field checks cover `text`, `reasoning`, `image`, and `tool-call`; accepted unknown tags remain opaque. Team projection cache version 4 rebuilds checkpoints from earlier cache versions from the Session log; the Session format version is unchanged.
+Mailbox projection and checkpoint admission preserve every decoded JSON field of accepted content outside the locally declared validators, including an own `__proto__` key. Local field checks cover `text`, `reasoning`, `image`, and `tool-call`; accepted unknown tags remain opaque. Team projection checkpoints rebuild from incompatible cache versions using the Session log; the Session format version is unchanged.
 
 ### Disposal
 
@@ -174,8 +174,10 @@ Read these pages when the package-level contract is not enough. They move from t
 
 `queueTasks` durably authorizes complete coding briefs at their current task revisions. Ready assignments start with `maxConcurrentTasks` worker slots (default 3); dependencies wait for supervisor acceptance. Shared writes with overlapping declared scopes wait. Optional worktree isolation prepares a checkout from source HEAD when the assignment becomes ready, without moving the Lead. Integrate prerequisite commits before accepting their tasks. Worktrees retain the existing sandbox and do not isolate OS permissions.
 
-Workers use `reportTask` to provide changed files, executed checks and risks. A ready report requires at least one check; it does not complete the task. Completion of dispatched work is Lead-only, requires a ready report and nonempty verification evidence, and saves that evidence with the task revision. Reports are claims to inspect, not automatically verified command results. Inactive or interrupted workers become blocked without replaying uncertain edits. `cancelDispatch` waits for startup and child teardown before releasing ownership; retained files and commits remain. Queued authorizations recover when the Lead Session opens. Invalid durable state stops dispatch and reports the uncertainty; no automatic retry runs. Roster views use each live member’s current model selection, retain a known dispatch route for an inactive worker, and omit unknown models instead of substituting the Lead model. A stopped blocked worker retains its unfinished task and conflicting write-scope ownership but releases its execution slot, so unrelated ready assignments can run. Running workers and owned background checks still consume capacity.
+Workers use `reportTask` to provide changed files, executed checks and risks. A ready report requires at least one check; it does not complete the task. Completion of dispatched work is owned by the assigned supervisor, requires a ready report and nonempty verification evidence, and saves that evidence with the task revision. Reports are claims to inspect, not automatically verified command results. Inactive or interrupted workers become blocked without replaying uncertain edits. `cancelDispatch` waits for startup and child teardown before releasing ownership; retained files and commits remain. Queued authorizations recover when the Lead Session opens. Invalid durable state stops dispatch and reports the uncertainty; no automatic retry runs. Roster views use each live member’s current model selection, retain a known dispatch route for an inactive worker, and omit unknown models instead of substituting the Lead model. A stopped blocked worker retains its unfinished task and conflicting write-scope ownership but releases its execution slot, so unrelated ready assignments can run. Running workers and owned background checks still consume capacity.
 
+
+`role: supervisor` delegates coordination of one work package. Its active owner creates child tasks with immutable `parentTaskId`, dispatches specialists and accepts their reports with evidence; it cannot accept its own package or manage unrelated tasks. Child paths remain inside the parent scope. The root retains project checkpoints, model changes and lifecycle ownership. Supervisor-only tools are scoped to that role. Reports wake the responsible supervisor; an idle supervisor waiting on unfinished children releases its execution slot. A ready parent report requires all children accepted. Package cancellation drains unfinished descendants before releasing ownership.
 
 ## Coordinator and routing
 
@@ -218,7 +220,7 @@ These limits describe what a team cannot do yet or what needs special operationa
 - **Experimental prototype with no stability promise** — the package is public, but its contracts can change freely while it incubates.
 - **One process** — manually spawned workers share the Lead checkout by default; dispatched worktrees are optional. There is no automatic merge, remote member, or filesystem lock.
 - **Advisory write scopes** — Bash, formatters, code generators, and direct external writers can bypass filesystem version checks; Leads must coordinate ownership and review the final diff.
-- **Flat immutable roster** — only the Lead creates direct teammates; there is no nested Team, rename, deletion, or name reuse.
+- **Root-owned immutable roster** — work packages support hierarchical supervisors; runtime workers remain direct children of one root. There is no rename, deletion or name reuse.
 - **Explicit recovery** — inactivity and failure retain ownership for inspection. Supervisor cancellation drains dispatched work before releasing it; manual assignments still require explicit release.
 - **No send retry guarantee** — Team does not retain or deduplicate new attempts; concurrent processes over one Team are unsupported. Historical queued messages that never reached their target are not delivered.
 

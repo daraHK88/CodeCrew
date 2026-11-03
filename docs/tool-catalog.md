@@ -2644,6 +2644,21 @@ Authorize a batch of complete coding assignments. Ready tasks start automaticall
             "type": "string",
             "description": "Approved route; omission uses bounded automatic routing or the configured default."
           },
+          "role": {
+            "type": "string",
+            "description": "Default worker. A supervisor coordinates descendants of this package; use only when independent components justify it.",
+            "enum": [
+              "worker",
+              "supervisor"
+            ]
+          },
+          "skills": {
+            "type": "array",
+            "description": "Exact permitted skill names for this assignment. Omit for bounded automatic selection; [] means none. Pass names, never copied skill bodies.",
+            "items": {
+              "type": "string"
+            }
+          },
           "isolation": {
             "type": "string",
             "description": "Defaults to worktree for writes and shared for explicitly read-only assignments. Worktrees start from HEAD when ready; the supervisor integrates prerequisite commits before acceptance.",
@@ -2723,6 +2738,10 @@ Create one unowned pending task on the shared Team task board.
 {
   "type": "object",
   "properties": {
+    "parent_task_id": {
+      "type": "string",
+      "description": "Work package this task belongs to. Required for a delegated supervisor; child paths must stay inside that package."
+    },
     "subject": {
       "type": "string",
       "description": "Concise task title."

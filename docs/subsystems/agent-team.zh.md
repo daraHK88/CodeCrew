@@ -60,6 +60,8 @@ interface TeamMessageSource {
 ```ts type-equiv
 /** Whole durable task snapshot; every mutation increments {@link revision}. */
 interface TeamTaskSnapshot {
+  /** Delegated work package whose supervisor owns review of this task. */
+  readonly parentTaskId?: TeamTaskId
   readonly id: TeamTaskId
   readonly revision: number
   readonly subject: string
@@ -78,6 +80,8 @@ interface TeamTaskSnapshot {
 <a id="web-projection"></a>
 
 `QueueTeamTaskRequest` 授权任务版本、唯一 worker 名字、获准提供方/模型及共享或 worktree 隔离。`TeamDispatchSnapshot` 持久保存授权及 queued、starting、running、review、blocked 或 cancelled 阶段、可选 checkout 与 `TeamTaskReport`。报告包含摘要、变更文件、检查和风险。分派为可选的 Lead 授权能力，依赖完成仍须主管验证。调度、取消及恢复规则见[包参考](../../packages/experimental/agent-team/README.zh.md#coding-policy)。
+
+`parentTaskId` 记录不可变的工作包层级。分派为 `role: supervisor` 的成员仅可创建、分派、取消和验收其当前工作包的后代任务，子任务写入范围必须包含于父包路径内。它不能验收自身或修改 Lead 的检查点和模型。父包完成须等待全部子任务，父子完成关系参与环检测。运行时 Session 仍由生命周期根直接拥有，因此层级深度不会成倍增加执行额度。`skills` 保存各任务的确切技能名称，模型可见正文仍由技能服务验证和加载。等待子任务的空闲主管释放执行槽；子任务报告会唤醒对应主管。取消工作包时，先停止未完成的后代任务，再释放所有权。
 
 ## Web 投影
 
@@ -98,6 +102,7 @@ interface TeamMemberProjection {
 ```ts type-equiv
 /** Runtime-enriched task view returned to tools and hosts. */
 interface TeamTaskView {
+  readonly parentTaskId?: TeamTaskId
   readonly id: TeamTaskId
   readonly revision: number
   readonly subject: string

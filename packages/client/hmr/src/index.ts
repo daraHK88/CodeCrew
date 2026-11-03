@@ -28,11 +28,14 @@ export const inject = ['clientModules', 'webServer']
 
 /** Plugin config, validated by the same-named schemastery schema. */
 export interface Config {
+  /** Watch source build artifacts; disable when code updates require a full app/Host restart. Plugin lifecycle events remain live. */
+  watchBuilds?: boolean
   /** Bundle stat-poll interval in milliseconds (default 500, the build-side watcher's polling default). */
   pollIntervalMs?: number
 }
 
 export const Config: z<Config> = z.object({
+  watchBuilds: z.boolean().default(true),
   pollIntervalMs: z.number().step(1).min(1).default(500),
 })
 
@@ -140,7 +143,7 @@ export function apply(ctx: Context, config: Config): void {
     }
   }
 
-  ctx.effect(() => {
+  if (config.watchBuilds !== false) ctx.effect(() => {
     // Initial sync covers rows already in the graph; the subscription covers
     // rows arriving later (boot-window activations, including this plugin's
     // own row; bootstrap revisions also reach page diagnostics).

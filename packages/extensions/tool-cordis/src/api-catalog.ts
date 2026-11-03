@@ -6180,7 +6180,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'CreateTeamTaskRequest',
-    declaration: 'export interface CreateTeamTaskRequest {\n    readonly subject: string;\n    readonly description: string;\n    readonly blockedBy?: readonly TeamTaskId[];\n    readonly writeScopes?: readonly string[];\n}',
+    declaration: 'export interface CreateTeamTaskRequest {\n    readonly parentTaskId?: TeamTaskId;\n    readonly subject: string;\n    readonly description: string;\n    readonly blockedBy?: readonly TeamTaskId[];\n    readonly writeScopes?: readonly string[];\n}',
   },
   {
     name: 'CreateWorktreePhase',
@@ -7828,7 +7828,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'QueueTeamTaskRequest',
-    declaration: 'export interface QueueTeamTaskRequest {\n    readonly taskId: TeamTaskId;\n    readonly expectedRevision: number;\n    readonly name: string;\n    readonly provider: string;\n    readonly agentOptions?: Partial<ModelSelection> & {\n        readonly maxTokens?: number;\n    };\n    readonly isolation: \'shared\' | \'worktree\';\n}',
+    declaration: 'export interface QueueTeamTaskRequest {\n    readonly role?: \'supervisor\';\n    readonly skills?: readonly string[];\n    readonly taskId: TeamTaskId;\n    readonly expectedRevision: number;\n    readonly name: string;\n    readonly provider: string;\n    readonly agentOptions?: Partial<ModelSelection> & {\n        readonly maxTokens?: number;\n    };\n    readonly isolation: \'shared\' | \'worktree\';\n}',
   },
   {
     name: 'ReadFileLine',
@@ -9432,7 +9432,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'TeamDispatchSnapshot',
-    declaration: 'export interface TeamDispatchSnapshot {\n    readonly taskId: TeamTaskId;\n    readonly taskRevision: number;\n    readonly name: string;\n    readonly provider: string;\n    readonly agentOptions?: Partial<ModelSelection> & {\n        readonly maxTokens?: number;\n    };\n    readonly isolation: \'shared\' | \'worktree\';\n    readonly phase: \'queued\' | \'starting\' | \'running\' | \'waiting\' | \'review\' | \'blocked\' | \'cancelled\';\n    readonly checkout?: {\n        readonly path: string;\n        readonly branch: string;\n        readonly baseCommit: string;\n        readonly repositoryRoot: string;\n    };\n    readonly report?: TeamTaskReport;\n    readonly error?: string;\n}',
+    declaration: 'export interface TeamDispatchSnapshot {\n    readonly role?: \'supervisor\';\n    readonly skills?: readonly string[];\n    readonly taskId: TeamTaskId;\n    readonly taskRevision: number;\n    readonly name: string;\n    readonly provider: string;\n    readonly agentOptions?: Partial<ModelSelection> & {\n        readonly maxTokens?: number;\n    };\n    readonly isolation: \'shared\' | \'worktree\';\n    readonly phase: \'queued\' | \'starting\' | \'running\' | \'waiting\' | \'review\' | \'blocked\' | \'cancelled\';\n    readonly checkout?: {\n        readonly path: string;\n        readonly branch: string;\n        readonly baseCommit: string;\n        readonly repositoryRoot: string;\n    };\n    readonly report?: TeamTaskReport;\n    readonly error?: string;\n}',
   },
   {
     name: 'TeamId',
@@ -9464,7 +9464,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'TeamTaskView',
-    declaration: 'export interface TeamTaskView {\n    readonly id: TeamTaskId;\n    readonly revision: number;\n    readonly subject: string;\n    readonly description: string;\n    readonly status: TeamTaskStatus;\n    readonly blockedBy: TeamTaskId[];\n    readonly writeScopes: string[];\n    readonly verification?: string;\n    readonly ownerName?: string;\n    readonly ready: boolean;\n    readonly writeScopeWarnings: string[];\n}',
+    declaration: 'export interface TeamTaskView {\n    readonly parentTaskId?: TeamTaskId;\n    readonly id: TeamTaskId;\n    readonly revision: number;\n    readonly subject: string;\n    readonly description: string;\n    readonly status: TeamTaskStatus;\n    readonly blockedBy: TeamTaskId[];\n    readonly writeScopes: string[];\n    readonly verification?: string;\n    readonly ownerName?: string;\n    readonly ready: boolean;\n    readonly writeScopeWarnings: string[];\n}',
   },
   {
     name: 'TeamWaitResult',

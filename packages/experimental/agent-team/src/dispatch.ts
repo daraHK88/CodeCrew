@@ -13,6 +13,7 @@ import { TeamId } from './types.ts'
 import type { QueueTeamTaskRequest, TeamDispatchSnapshot, TeamTaskReport, TeamTaskId } from './types.ts'
 import { projectTaskView } from './task-view.ts'
 import { requiredText } from './validation.ts'
+import { canManageTask } from './task-authority.ts'
 
 /**
  * Reject incomplete coding assignments before any worker starts.
@@ -52,11 +53,11 @@ export class TeamDispatcher {
    */
   async queue(caller: Agent, requests: readonly QueueTeamTaskRequest[]): Promise<readonly TeamDispatchSnapshot[]> {
     const membership = this.roster.membership(caller)
-    if (membership.role !== 'lead') throw new TeamError('Only the supervisor may dispatch work', 'TEAM_LEAD_REQUIRED')
-    if (this.lifecycle.disposed || this.halted.has(caller)) throw new TeamError('Dispatch is stopped; inspect the runtime error before resuming', 'TEAM_DISPATCH_STOPPED')
+    const root = membership.root
+    if (this.lifecycle.disposed || this.halted.has(root)) throw new TeamError('Dispatch is stopped; inspect the runtime error before resuming', 'TEAM_DISPATCH_STOPPED')
     if (requests.length === 0) throw new TeamError('Provide at least one task assignment', 'TEAM_INVALID_ARGUMENT')
-    await this.journal.transact(caller.id, async () => {
-      const state = this.journal.state(caller)
+    await this.journal.transact(root.id, async () => {
+      const state = this.journal.state(root)
       const ids = new Set<TeamTaskId>()
       const names = new Set(state.members.map(member => member.name))
       for (const item of state.dispatches) names.add(item.name)
@@ -65,6 +66,10 @@ export class TeamDispatcher {
         if (task === undefined || task.revision !== request.expectedRevision || task.status !== 'pending' || task.ownerId !== undefined) {
           throw new TeamError('Dispatch requires an unowned pending task at its current revision', 'TEAM_TASK_STALE_REVISION')
         }
+        if (!canManageTask(state, caller.id, task)) throw new TeamError('Only the assigned supervisor may dispatch this task', 'TEAM_LEAD_REQUIRED')
+        if (request.role === 'supervisor' && request.isolation !== 'shared') throw new TeamError('Supervisors coordinate shared packages; isolate leaf writers instead', 'TEAM_INVALID_ARGUMENT')
+        if ((request.skills?.length ?? 0) > 4) throw new TeamError('Assign at most four relevant skills', 'TEAM_INVALID_ARGUMENT')
+        for (const skill of request.skills ?? []) requiredText(skill, 'skill', 200)
         if (ids.has(task.id) || state.dispatches.some(item => item.taskId === task.id && item.phase !== 'cancelled')) throw new TeamError('Task already has a dispatch; inspect or cancel it', 'TEAM_DISPATCH_EXISTS')
         if (!/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/.test(request.name) || names.has(request.name)) throw new TeamError('Dispatch requires a unique lower-kebab-case worker name', 'TEAM_MEMBER_NAME_TAKEN')
         requiredText(request.provider, 'provider', 200)
@@ -80,10 +85,10 @@ export class TeamDispatcher {
       // can retain an admitted prefix; callers must inspect before resubmitting.
       for (const request of requests) {
         const { expectedRevision, ...worker } = request
-        await this.save(caller, { ...worker, taskRevision: expectedRevision, phase: 'queued' })
+        await this.save(root, { ...worker, taskRevision: expectedRevision, phase: 'queued' })
       }
     })
-    this.schedule(caller)
+    this.schedule(root)
     return this.list(caller)
   }
 
@@ -115,13 +120,16 @@ export class TeamDispatcher {
       requiredText(report.summary, 'summary', 4_000)
       requiredText(report.risks, 'risks', 4_000)
       if (outcome === 'ready' && this.hasJobs(caller)) throw new TeamError('Finish owned background checks before reporting ready', 'TEAM_TASK_JOBS_RUNNING')
+      if (outcome === 'ready' && state.tasks.some(child => child.parentTaskId === taskId && child.status !== 'completed' && child.status !== 'deleted')) {
+        throw new TeamError('Accept all child tasks before reporting the package ready', 'TEAM_TASK_BLOCKED')
+      }
       if (outcome === 'ready' && report.checks.length === 0) throw new TeamError('A ready report requires checks actually run', 'TEAM_INVALID_ARGUMENT')
       for (const path of report.changedFiles) requiredText(path, 'changed file', 1_000)
       for (const check of report.checks) requiredText(check, 'check result', 2_000)
       if (Buffer.byteLength(JSON.stringify(report)) > 16_384) throw new TeamError('Worker report exceeds 16384 bytes', 'TEAM_INVALID_ARGUMENT')
       await this.save(root, { ...assignment, phase: outcome === 'ready' ? 'review' : 'blocked', report: structuredClone(report) })
     })
-    this.notify(root, `${taskId}: ${outcome === 'ready' ? 'awaiting supervisor review and integration' : 'blocked; inspect before retrying'}. Read team_dispatch_status with task_id for the current revision and full report; verify the actual diff and checks. The task remains incomplete.`)
+    await this.notifySupervisor(root, taskId, `${taskId}: ${outcome === 'ready' ? 'awaiting supervisor review and integration' : 'blocked; inspect before retrying'}. Read team_dispatch_status with task_id for the current revision and full report; verify the actual diff and checks. The task remains incomplete.`)
     this.schedule(root)
   }
 
@@ -177,19 +185,25 @@ export class TeamDispatcher {
    * @param taskId - assignment to cancel; retained worktree files are preserved.
    */
   async cancel(caller: Agent, taskId: TeamTaskId): Promise<void> {
-    if (this.roster.membership(caller).role !== 'lead') throw new TeamError('Only the supervisor may cancel dispatched work', 'TEAM_LEAD_REQUIRED')
-    await this.journal.transact(caller.id, async () => {
-      const assignment = this.journal.state(caller).dispatches.find(item => item.taskId === taskId)
+    const root = this.roster.membership(caller).root
+    const state = this.journal.state(root)
+    const task = state.tasks.find(item => item.id === taskId)
+    if (task === undefined || !canManageTask(state, caller.id, task)) throw new TeamError('Only the assigned supervisor may cancel dispatched work', 'TEAM_LEAD_REQUIRED')
+    for (const child of state.tasks.filter(item => item.parentTaskId === taskId && item.status !== 'completed' && item.status !== 'deleted')) {
+      if (state.dispatches.some(item => item.taskId === child.id && item.phase !== 'cancelled')) await this.ctx.agentTeams.cancelDispatch(caller, child.id)
+    }
+    await this.journal.transact(root.id, async () => {
+      const assignment = this.journal.state(root).dispatches.find(item => item.taskId === taskId)
       if (assignment === undefined) throw new TeamError('Dispatched task not found', 'TEAM_TASK_NOT_FOUND')
-      if (this.journal.state(caller).tasks.some(task => task.id === taskId && task.status === 'completed')) throw new TeamError('Accepted work cannot be cancelled; explicitly reopen the task first', 'TEAM_TASK_INVALID_TRANSITION')
-      await this.save(caller, { ...assignment, phase: 'cancelled' })
+      if (this.journal.state(root).tasks.some(task => task.id === taskId && task.status === 'completed')) throw new TeamError('Accepted work cannot be cancelled; explicitly reopen the task first', 'TEAM_TASK_INVALID_TRANSITION')
+      await this.save(root, { ...assignment, phase: 'cancelled' })
     })
     // The scheduler may still be preparing this assignment. It observes cancelled
     // before starting; cancellation also waits for that preparation to settle.
-    await this.pending.get(caller)?.promise
-    const assignment = this.journal.state(caller).dispatches.find(item => item.taskId === taskId)
-    const member = this.journal.state(caller).members.find(item => item.name === assignment?.name)
-    if (member !== undefined) await this.roster.stopTeammates(caller, [member.id])
+    await this.pending.get(root)?.promise
+    const assignment = this.journal.state(root).dispatches.find(item => item.taskId === taskId)
+    const member = this.journal.state(root).members.find(item => item.name === assignment?.name)
+    if (member !== undefined) await this.roster.stopTeammates(root, [member.id])
   }
 
   /**
@@ -230,7 +244,10 @@ export class TeamDispatcher {
       const liveJobs = member !== undefined && (this.ctx.get('jobs')?.list(member.id).some(job =>
         job.owner === member.id && (job.status === 'running' || job.status === 'stopping')) ?? false)
       const pendingInput = worker !== undefined && (worker.inbox.nextStep.length > 0 || worker.inbox.nextTurn.length > 0)
-      const waiting = (item.phase === 'running' || item.phase === 'waiting') && member?.status !== 'running' && liveJobs
+      const childrenPending = item.role === 'supervisor' && state.tasks.some(child => child.parentTaskId === item.taskId
+        && child.status !== 'completed' && child.status !== 'deleted' && state.dispatches.some(assignment => assignment.taskId === child.id
+          && ['queued', 'starting', 'running', 'waiting'].includes(assignment.phase)))
+      const waiting = (item.phase === 'running' || item.phase === 'waiting') && member?.status !== 'running' && (liveJobs || childrenPending)
       const resumed = item.phase === 'waiting' && member?.status === 'running' && !liveJobs
       if ((waiting && item.phase !== 'waiting') || resumed) {
         await this.journal.transact(root.id, async () => {
@@ -246,12 +263,15 @@ export class TeamDispatcher {
           if (current !== item) return
           await this.save(root, { ...item, phase: 'blocked', error: 'Worker stopped or execution was interrupted without a final report. Inspect changes; cancel before replacing it.' })
         })
-        this.notify(root, `${item.taskId}: worker stopped without a reviewable result. Inspect team_dispatch_status and cancel before replacing the assignment.`)
+        await this.notifySupervisor(root, item.taskId, `${item.taskId}: worker stopped without a reviewable result. Inspect team_dispatch_status and cancel before replacing the assignment.`)
       }
     }
     let occupied = this.journal.state(root).dispatches.filter((item) => {
       const member = this.roster.list(this.roster.membership(root)).find(member => member.name === item.name)
-      return item.phase === 'starting' || item.phase === 'running' || item.phase === 'waiting' || member?.status === 'running'
+      const worker = member === undefined ? undefined : this.ctx.agents.get(member.id)
+      return item.phase === 'starting' || item.phase === 'running'
+        || (item.phase === 'waiting' && (item.role !== 'supervisor' || (worker !== undefined && this.hasJobs(worker))))
+        || member?.status === 'running'
     }).length
     const ready: { assignment: TeamDispatchSnapshot; brief: string; scopes: readonly string[] }[] = []
     for (const assignment of this.journal.state(root).dispatches) {
@@ -259,6 +279,12 @@ export class TeamDispatcher {
       if (assignment.phase !== 'queued') continue
       const task = this.journal.state(root).tasks.find(task => task.id === assignment.taskId)
       if (task === undefined) continue
+      if (task.parentTaskId !== undefined && !this.journal.state(root).dispatches.some(parent => parent.taskId === task.parentTaskId
+        && parent.role === 'supervisor' && ['starting', 'running', 'waiting'].includes(parent.phase))) {
+        await this.journal.transact(root.id, () => this.save(root, { ...assignment, phase: 'blocked', error: 'Parent supervisor is unavailable; inspect before reauthorizing child work.' }))
+        this.notify(root, `${assignment.taskId}: parent supervisor unavailable; no worker started.`)
+        continue
+      }
       if (task.revision !== assignment.taskRevision || task.status !== 'pending' || task.ownerId !== undefined) {
         await this.journal.transact(root.id, () => this.save(root, { ...assignment, phase: 'blocked', error: 'Task changed after dispatch authorization; inspect and create a revised assignment.' }))
         this.notify(root, `${assignment.taskId}: authorization is stale; no worker started.`)
@@ -294,9 +320,9 @@ export class TeamDispatcher {
       }
       if (this.journal.state(root).dispatches.find(item => item.taskId === assignment.taskId)?.phase === 'cancelled') return
       await this.roster.spawn(root, {
-        name: assignment.name, description: `Assignment ${assignment.taskId}`,
+        name: assignment.name, description: `${assignment.role === 'supervisor' ? 'Supervisor package' : 'Assignment'} ${assignment.taskId}`,
         assignment: { taskId: assignment.taskId, expectedRevision: assignment.taskRevision },
-        prompt: [{ type: 'text', text: `You own ${assignment.taskId}; it has already been claimed for you.\n${brief}\n\nReuse the project's established patterns. Read relevant code and instructions before editing. Verify requirements and meaningful failure cases. Avoid speculative abstractions or unrelated changes. ${assignment.checkout === undefined ? 'Respect the declared write scopes.' : `Work only in your isolated checkout ${assignment.checkout.path}. Commit your scoped changes there and include the branch in your report; the Lead integrates them.`}\nReport with team_task_report: changed files, checks actually run with results, and remaining risks. A ready report is not acceptance. Do not complete the shared task yourself. If blocked, report the evidence instead of retrying blindly. Finish all owned background work before reporting.` }],
+        prompt: [{ type: 'text', text: `You own ${assignment.taskId}; it has already been claimed for you.\n${assignment.role === 'supervisor' ? 'You supervise this work package. Create small child tasks with parent_task_id pointing to your task. Delegate each independent component to a fresh specialist; coordinate interfaces, inspect reports and accept children with evidence. Do not edit files while your children own them. Report only after every child is accepted. ' : ''}${brief}\n\nReuse the project's established patterns. Read relevant code and instructions before editing. Verify requirements and meaningful failure cases. Avoid speculative abstractions or unrelated changes. ${assignment.checkout === undefined ? 'Respect the declared write scopes.' : `Work only in your isolated checkout ${assignment.checkout.path}. Commit your scoped changes there and include the branch in your report; the Lead integrates them.`}\nReport with team_task_report: changed files, checks actually run with results, and remaining risks. A ready report is not acceptance. Do not complete the shared task yourself. If blocked, report the evidence instead of retrying blindly. Finish all owned background work before reporting.` }],
         ...assignment.checkout === undefined ? {} : { cwd: assignment.checkout.path },
         ...assignment.agentOptions === undefined ? {} : { agentOptions: assignment.agentOptions },
         context: 'fresh', provider: assignment.provider, signal: this.lifecycle.signal,
@@ -311,13 +337,31 @@ export class TeamDispatcher {
         const current = this.journal.state(root).dispatches.find(item => item.taskId === assignment.taskId)
         if (current?.phase !== 'cancelled') await this.save(root, { ...assignment, phase: 'blocked', error: errorMessage(error).slice(0, 4_000) })
       })
-      this.notify(root, `${assignment.taskId}: dispatch failed. Inspect the error and any retained checkout before replacing the assignment.`)
+      await this.notifySupervisor(root, assignment.taskId, `${assignment.taskId}: dispatch failed. Inspect the error and any retained checkout before replacing the assignment.`)
     }
   }
 
   /** Checkpoint assignment effects before exposing the new status. */
   private async save(root: Agent, dispatch: TeamDispatchSnapshot): Promise<void> {
     await this.journal.appendAndFlush(root, 'team/dispatch', { version: 2, teamId: TeamId(root.id), dispatch })
+  }
+
+  /** Notify the responsible package supervisor; retain root visibility if it cannot resume. */
+  private async notifySupervisor(root: Agent, taskId: TeamTaskId, text: string): Promise<void> {
+    const state = this.journal.state(root)
+    const parentId = state.tasks.find(task => task.id === taskId)?.parentTaskId
+    const parent = state.dispatches.find(item => item.taskId === parentId && item.role === 'supervisor'
+      && ['starting', 'running', 'waiting'].includes(item.phase))
+    if (parent !== undefined) {
+      try {
+        await this.ctx.agentTeams.sendMessage(root, { target: parent.name,
+          content: [{ type: 'text', text }], signal: this.lifecycle.signal })
+        return
+      } catch (error: unknown) {
+        this.ctx.logger.warn(error)
+      }
+    }
+    this.notify(root, text)
   }
 
   /** Wake the supervisor with an actionable report, without requiring another worker model. */

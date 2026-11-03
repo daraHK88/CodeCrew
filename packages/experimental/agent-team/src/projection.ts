@@ -78,6 +78,7 @@ const teamMemberSnapshotSchema = z.object({
 }).strict() as z.ZodType<TeamMemberSnapshot>
 
 const teamTaskSnapshotSchema = z.object({
+  parentTaskId: teamTaskIdSchema.optional(),
   id: teamTaskIdSchema,
   revision: positiveSafeInteger,
   subject: z.string(),
@@ -98,6 +99,7 @@ const teamCheckpointEventSchema = z.object({
 }).strict() as z.ZodType<SessionEventMap['team/checkpoint']>
 
 const teamDispatchSchema = z.object({
+  role: z.literal('supervisor').optional(), skills: z.array(z.string().min(1).max(200)).max(4).optional(),
   taskId: teamTaskIdSchema, taskRevision: positiveSafeInteger,
   name: z.string().min(1), provider: z.string().min(1),
   agentOptions: z.object({
@@ -304,6 +306,7 @@ function applyCurrentTeamEvent(state: TeamProjectionState, event: TeamSessionEve
         }
         if (!replacement && (prior.name !== assignment.name || prior.taskRevision !== assignment.taskRevision
           || prior.provider !== assignment.provider || prior.isolation !== assignment.isolation
+          || prior.role !== assignment.role || JSON.stringify(prior.skills) !== JSON.stringify(assignment.skills)
           || JSON.stringify(prior.agentOptions) !== JSON.stringify(assignment.agentOptions)
           || !transitions[prior.phase].includes(assignment.phase))) throw new Error('invalid dispatch transition or changed authorization')
       }
@@ -339,6 +342,7 @@ function applyCurrentTeamEvent(state: TeamProjectionState, event: TeamSessionEve
       if (prior !== undefined && task.revision !== prior.revision + 1) {
         throw new Error(`team task "${task.id}" revision is not contiguous`)
       }
+      if (prior !== undefined && prior.parentTaskId !== task.parentTaskId) throw new Error('task parent cannot change after creation')
       assertTaskGraphCandidate(state.tasks, task)
       let nextTaskNumber = state.nextTaskNumber
       const match = numericTaskIdPattern.exec(task.id)
@@ -380,6 +384,7 @@ const teamMemberProjectionSchema = z.object({
 }).strict() as z.ZodType<TeamMemberProjection>
 
 const teamTaskViewSchema = z.object({
+  parentTaskId: teamTaskIdSchema.optional(),
   id: teamTaskIdSchema,
   revision: positiveSafeInteger,
   subject: z.string(),
@@ -452,7 +457,7 @@ export function teamProjectionView(state: TeamProjectionState): TeamProjection {
 /** Team projection selected by the projected Session identity; the wire view carries durable roster and task state only. */
 export const teamProjectionDefinition = {
   key: 'agentTeam',
-  stateVersion: 6,
+  stateVersion: 7,
   stateSchema: teamProjectionEntrySchema,
   init: header => emptyTeamState(header.id),
   apply: applyProjectionEvent,

@@ -1,4 +1,8 @@
 # Coding profile overlay. Apply after base, web-app, and agent-team-profile.
+- id: client-hmr
+  config:
+    # Publish source rebuilds only after restarting both the app and Host.
+    watchBuilds: false
 - id: agent-default-model
   config:
     provider: openai-codex
@@ -23,11 +27,11 @@
         minConfidence: 0.7
         maxTextBytes: 12000
         maxImageBytes: 2097152
-        maxCallsPerTurn: 2
+        maxCallsPerTurn: 4
         maxQuestions: 8
         maxOptions: 12
       requireTaskBrief: true
-      defaultWorkerProfile: reader
+      defaultWorkerProfile: implementer
       workerProfiles:
         reader:
           provider: openai-codex
@@ -54,8 +58,15 @@
     maxParallelToolCalls: 4
 - id: subagent
   config:
-    maxActiveSubagents: 4
+    maxActiveSubagents: 16
     maxDepth: 1
+- id: agent-team
+  config:
+    maxMembers: 128
+    maxTasks: 256
+    maxMessageBytes: 65536
+    disposalTimeoutMs: 5000
+    maxConcurrentTasks: 12
 - insert:
     - id: coding-settings
       name: '@deepseek-ai/dsh-agent-default-model/coding-settings'

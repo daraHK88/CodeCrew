@@ -4,6 +4,7 @@ import { brandString } from '@deepseek-ai/dsh-brand'
 import type { SessionId } from '@deepseek-ai/dsh-session'
 import type { TeamState } from './projection.ts'
 import type { TeamTaskSnapshot, TeamTaskView } from './types.ts'
+import { taskDescendsFrom } from './task-authority.ts'
 
 /**
  * Whether two normalized file or directory prefixes overlap on path components.
@@ -43,11 +44,15 @@ export function projectTaskView(state: TeamState, task: TeamTaskSnapshot): TeamT
   const warnings = new Set<string>()
   for (const other of state.tasks) {
     if (other.id === task.id || other.status !== 'in_progress') continue
+    // A supervisor reserves the package's scope but delegates its writes to descendants.
+    if (taskDescendsFrom(state, task, other.id)
+      && state.dispatches.some(item => item.taskId === other.id && item.role === 'supervisor')) continue
     if (task.writeScopes.some(left => other.writeScopes.some(right => scopesOverlap(left, right)))) {
       warnings.add(`write scopes overlap with ${other.id}`)
     }
   }
   return {
+    ...task.parentTaskId === undefined ? {} : { parentTaskId: task.parentTaskId },
     id: task.id,
     revision: task.revision,
     subject: task.subject,

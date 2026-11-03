@@ -70,3 +70,5 @@ node coding/profile-session.mjs --session session-id --compare previous-session-
 此配置使用四项本地技能候选列表、完整分页发现、自动正文去重和确定性的实质性 UI 规则。Settings → Coding 可独立选择 UI 设计与构建配置，初始角色为 implementer。小型读取和精确编辑保持低成本直接路由。完整 UI 简报授权常规可逆设计选择，无需确认仪式。
 
 监督者通过 `team_checkpoint` 或首次分配保存目标。就绪且独立的分配同时启动；后台任务让 worker 保持 `waiting`，完成后继续。任务与检查点跨中断和历史压缩保留；重启后不确定的分配须先检查。工作树集成与最终验收由监督者控制。测量结果和剩余限制见[评估](evaluation.md)。
+
+编码覆盖配置允许十二个并发任务、十六个活跃 subagent，成员生命周期上限为 128。这些资源界限允许十个独立专员加主管，并不要求每次组建同等规模团队。工作包使用分层主管与各 worker 的专门技能。源码客户端重建监听已禁用；重建前退出，再完整启动 App 和 Host，以使用一致的产物。决策建议每 turn 最多四次。

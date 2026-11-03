@@ -43,6 +43,8 @@ kind: "package-reference"
 
 生成的[配置目录](../../../docs/config-catalog.zh.md#deepseek-aidsh-client-hmr)是所有受支持字段及其 JSDoc 的完整真源。
 
+若源码产物必须在完整重启应用及 Host 后才生效，设置 `watchBuilds: false`。这会禁用文件轮询，但保留图传递与插件启用/禁用更新。CodeCrew 使用此设置，避免运行中的 Host 与部分重建的浏览器代码混用。
+
 ### 观察成功
 
 成功的替换会立即显示编辑后的 UI，无需页面重载，且插件在替换后继续工作。请记住权衡：被重载插件内的 React 状态会丢失，而会话、工作区与连接状态会保留。

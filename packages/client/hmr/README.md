@@ -43,6 +43,8 @@ Each successful reload re-executes the plugin bundle and remounts the plugin wit
 
 The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-aidsh-client-hmr) is the exhaustive source for every accepted field and its JSDoc.
 
+Set `watchBuilds: false` when source artifacts must take effect only after a full application and Host restart. The file poller stays disabled while graph delivery and plugin enable/disable changes remain live. CodeCrew uses this setting to avoid mixing a running Host with partially rebuilt browser code.
+
 ### Observing success
 
 A successful swap shows the edited UI immediately with no page reload, and the plugin keeps working after the swap. Remember the trade-off: React state inside the reloaded plugin is lost, while session, workspace, and connection state survives.

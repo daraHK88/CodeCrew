@@ -60,6 +60,8 @@ Every task event stores a complete snapshot. `revision` is the compare-and-set v
 ```ts type-equiv
 /** Whole durable task snapshot; every mutation increments {@link revision}. */
 interface TeamTaskSnapshot {
+  /** Delegated work package whose supervisor owns review of this task. */
+  readonly parentTaskId?: TeamTaskId
   readonly id: TeamTaskId
   readonly revision: number
   readonly subject: string
@@ -78,6 +80,8 @@ interface TeamTaskSnapshot {
 <a id="web-projection"></a>
 
 `QueueTeamTaskRequest` authorizes a task revision, a unique worker name, an approved provider/model route and shared or worktree isolation. `TeamDispatchSnapshot` persists that authorization with queued, starting, running, waiting, review, blocked or cancelled phase, optional retained checkout and `TeamTaskReport`. Reports contain summary, changed files, checks and risks. Dispatch is optional and Lead-authorized; dependency completion still requires supervisor verification. See the [package reference](../../packages/experimental/agent-team/README.md#coding-policy) for scheduling, cancellation and recovery.
+
+`parentTaskId` records immutable work-package ancestry. A dispatched `role: supervisor` member can create, dispatch, cancel and accept only descendants of its own active package, with child write scopes contained in the parent paths. It cannot accept itself or change the Lead checkpoint/model. Parent completion waits for every child; parent/child completion edges participate in cycle validation. Runtime sessions remain direct children of the lifecycle root, so authority depth does not multiply execution limits. `skills` records the exact assignment names; model-visible bodies still pass through the skill owner. Idle supervisors waiting on children release execution capacity, and child reports resume their responsible supervisor. Cancelling a package drains unfinished descendants before ownership release.
 
 ## Web projection
 
@@ -98,6 +102,7 @@ interface TeamMemberProjection {
 ```ts type-equiv
 /** Runtime-enriched task view returned to tools and hosts. */
 interface TeamTaskView {
+  readonly parentTaskId?: TeamTaskId
   readonly id: TeamTaskId
   readonly revision: number
   readonly subject: string

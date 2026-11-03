@@ -525,6 +525,8 @@ export interface ConnectionRecoveryConfig {
 ```ts config-catalog
 /** Plugin config, validated by the same-named schemastery schema. */
 export interface Config {
+  /** Watch source build artifacts; disable when code updates require a full app/Host restart. Plugin lifecycle events remain live. */
+  watchBuilds?: boolean
   /** Bundle stat-poll interval in milliseconds (default 500, the build-side watcher's polling default). */
   pollIntervalMs?: number
 }
@@ -898,7 +900,7 @@ export interface Config {
 ## `@deepseek-ai/dsh-experimental-agent-team`
 
 - `inject`: `agents` · `sessions` · `sessionPersistence` · `sessionProjections` · `subagents`
-- `source`: [`packages/experimental/agent-team/src/types.ts:207`](../packages/experimental/agent-team/src/types.ts)
+- `source`: [`packages/experimental/agent-team/src/types.ts:216`](../packages/experimental/agent-team/src/types.ts)
 
 ```ts config-catalog
 /** Team-service deployment limits. */
@@ -1456,7 +1458,7 @@ export interface Config {
 
 - `inject`: `agents` · `agentTeams` · `tools` · `systemPrompt`
 - `refs`: `Volatile` (`@deepseek-ai/cordis`)
-- `source`: [`packages/experimental/tool-agent-team/src/index.ts:53`](../packages/experimental/tool-agent-team/src/index.ts)
+- `source`: [`packages/experimental/tool-agent-team/src/index.ts:54`](../packages/experimental/tool-agent-team/src/index.ts)
 
 ```ts config-catalog
 /** Tool routing configuration. */

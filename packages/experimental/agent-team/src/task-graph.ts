@@ -1,6 +1,7 @@
 /** Complete dependency validation for current Team task snapshots. */
 
 import type { TeamTaskId, TeamTaskSnapshot } from './types.ts'
+import { scopesContained } from './task-authority.ts'
 
 /** Task dependency relation rejected by the shared graph validator. */
 export type TeamTaskGraphViolation = 'missing' | 'duplicate' | 'cycle'
@@ -32,6 +33,11 @@ export function assertTaskGraphCandidate(
 
   for (const task of tasks.values()) {
     if (task.status === 'deleted') continue
+    if (task.parentTaskId !== undefined) {
+      const parent = tasks.get(task.parentTaskId)
+      if (parent === undefined || parent.status === 'deleted') throw new TeamTaskGraphError('Parent task is missing or deleted', 'missing')
+      if (!scopesContained(task.writeScopes, parent.writeScopes)) throw new TeamTaskGraphError('Child write scopes exceed parent package', 'missing')
+    }
     const seen = new Set<TeamTaskId>()
     for (const blockerId of task.blockedBy) {
       if (blockerId === task.id) {
@@ -62,6 +68,8 @@ export function assertTaskGraphCandidate(
     if (task === undefined || task.status === 'deleted') return
     visiting.add(id)
     for (const blockerId of task.blockedBy) visit(blockerId)
+    // Parent completion depends on child acceptance, even without an explicit blocker edge.
+    for (const child of tasks.values()) if (child.parentTaskId === id) visit(child.id)
     visiting.delete(id)
     visited.add(id)
   }

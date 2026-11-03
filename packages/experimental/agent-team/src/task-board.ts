@@ -17,6 +17,7 @@ import type {
 } from './types.ts'
 import { projectTaskView, taskReady } from './task-view.ts'
 import { requiredText, writeScope } from './validation.ts'
+import { canManageTask, scopesContained, supervisorAssignment } from './task-authority.ts'
 
 const TASK_GRAPH_ERROR_CODES: Record<TeamTaskGraphViolation, string> = {
   missing: 'TEAM_TASK_NOT_FOUND',
@@ -54,6 +55,7 @@ export class TeamTaskBoard {
         throw new TeamError('Team task id space exhausted', 'TEAM_TASK_LIMIT')
       }
       const task: TeamTaskSnapshot = {
+        ...request.parentTaskId === undefined ? {} : { parentTaskId: request.parentTaskId },
         id,
         revision: 1,
         subject: requiredText(request.subject, 'subject', 200),
@@ -61,6 +63,24 @@ export class TeamTaskBoard {
         status: 'pending',
         blockedBy: this.dependencies(request.blockedBy ?? [], state),
         writeScopes: this.writeScopes(request.writeScopes ?? []),
+      }
+      const memberId = membership.role === 'lead' ? root.id : state.members.find(member => member.name === membership.name)?.id
+      const supervisor = memberId === undefined ? undefined : supervisorAssignment(state, memberId)
+      const dispatched = state.dispatches.some(item => item.name === membership.name)
+      if (membership.role !== 'lead' && dispatched && supervisor === undefined) {
+        throw new TeamError('Only an active supervisor can create delegated tasks', 'TEAM_TASK_UNAUTHORIZED')
+      }
+      if (supervisor !== undefined && request.parentTaskId === undefined) {
+        throw new TeamError('A delegated supervisor must create work below its assigned parent_task_id', 'TEAM_TASK_UNAUTHORIZED')
+      }
+      if (request.parentTaskId !== undefined) {
+        const parent = state.tasks.find(item => item.id === request.parentTaskId)
+        if (parent === undefined || memberId === undefined || parent.status !== 'in_progress'
+          || !state.dispatches.some(item => item.taskId === parent.id && item.role === 'supervisor' && ['starting', 'running', 'waiting'].includes(item.phase))
+          || !canManageTask(state, memberId, task) || !scopesContained(task.writeScopes, parent.writeScopes)) {
+          throw new TeamError('Delegated work requires an active parent package under your authority and contained write scopes', 'TEAM_TASK_UNAUTHORIZED')
+        }
+        if (task.blockedBy.includes(parent.id)) throw new TeamError('A child cannot wait for its own parent package', 'TEAM_TASK_DEPENDENCY_CYCLE')
       }
       this.assertTaskGraph(state, task)
       await this.journal.appendAndFlush(root, 'team/task', { version: 2, teamId: TeamId(root.id), task })
@@ -119,7 +139,12 @@ export class TeamTaskBoard {
         )
       }
       if (current.status === 'deleted') throw new TeamError(`team task "${current.id}" is deleted`, 'TEAM_TASK_DELETED')
-      const lead = membership.role === 'lead'
+      if (state.tasks.some(task => task.parentTaskId === current.id && task.status !== 'completed' && task.status !== 'deleted'
+        && (task.ownerId !== undefined || state.dispatches.some(item => item.taskId === task.id && item.phase !== 'cancelled')))
+        && ['release', 'delete', 'reopen', 'reassign'].includes(request.action)) {
+        throw new TeamError('Cancel and settle child work before changing the parent package owner or lifecycle', 'TEAM_TASK_BLOCKED')
+      }
+      const lead = canManageTask(state, caller.id, current)
       const owner = current.ownerId === caller.id
       const authorizeOwner = (): void => {
         if (!lead && !owner) throw new TeamError('task mutation requires its owner or Team Lead', 'TEAM_TASK_UNAUTHORIZED')
@@ -153,6 +178,10 @@ export class TeamTaskBoard {
               : { description: requiredText(request.description, 'description', 16_384) },
             ...request.writeScopes === undefined ? {} : { writeScopes: this.writeScopes(request.writeScopes) },
           }
+          if (next.parentTaskId !== undefined && !scopesContained(next.writeScopes,
+            state.tasks.find(task => task.id === next.parentTaskId)?.writeScopes ?? [])) {
+            throw new TeamError('Child write scopes must remain inside their parent package', 'TEAM_TASK_UNAUTHORIZED')
+          }
           break
         case 'set_dependencies':
           authorizeOwner()
@@ -160,6 +189,9 @@ export class TeamTaskBoard {
           next = { ...current, blockedBy: this.dependencies(request.blockedBy, state, current.id) }
           break
         case 'complete':
+          if (state.tasks.some(task => task.parentTaskId === current.id && task.status !== 'completed' && task.status !== 'deleted')) {
+            throw new TeamError('Accept every child task before completing its parent package', 'TEAM_TASK_BLOCKED')
+          }
           if (state.dispatches.some(item => item.taskId === current.id)) {
             if (!lead) throw new TeamError('Only the supervisor may accept dispatched work', 'TEAM_LEAD_REQUIRED')
             const assignment = state.dispatches.find(item => item.taskId === current.id)

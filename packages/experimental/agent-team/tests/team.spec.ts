@@ -66,6 +66,7 @@ async function storedEvents(ctx: Context, id: SessionId): Promise<readonly Sessi
 async function setup(
   script: ConstructorParameters<typeof MockAdapter>[0],
   config: ConstructorParameters<typeof TeamService>[1] = {},
+  maxActiveSubagents = 8,
 ) {
   const ctx = new Context()
   contexts.push(ctx)
@@ -76,7 +77,7 @@ async function setup(
   await ctx.plugin(JsonlSessionPersistence, { root: storageRoot })
   await ctx.plugin(TestSessionQuery)
   await ctx.plugin(AgentLoop, { agents: [] })
-  await ctx.plugin(SubagentService)
+  await ctx.plugin(SubagentService, { maxActiveSubagents })
   await ctx.plugin(SubagentSpawn, { providerName: 'spawn' })
   await ctx.plugin(SubagentFork, { providerName: 'fork' })
   const teamFiber = await ctx.plugin(TeamService, config)
@@ -1527,7 +1528,7 @@ async function dispatchWorker(ctx: Context, lead: Agent, name: string): Promise<
 
 /** Keep worker streams live independently of supervisor notification turns. */
 async function setupDispatch(maxConcurrentTasks = 2, silentOnce = false, onStream?: (request: GenerateOptions) => void) {
-  const fixture = await setup([], { maxConcurrentTasks })
+  const fixture = await setup([], { maxConcurrentTasks }, 16)
   let silent = silentOnce
   vi.spyOn(fixture.adapter, 'stream').mockImplementation(async function* (request) {
     fixture.adapter.requests.push(request)
@@ -1778,4 +1779,64 @@ it('holds a dispatched worker for owned background checks and resumes from the r
   })
   await vi.waitFor(() => { expect(ctx.agentTeams.listDispatches(lead)[0]?.phase).toBe('blocked') })
   expect(ctx.agentTeams.getTask(lead, assignment.taskId).status).toBe('in_progress')
+})
+
+it('delegates ten scoped specialists concurrently under a supervisor without granting sibling or self acceptance', async () => {
+  const { ctx, lead, adapter } = await setupDispatch(12)
+  const parent = await queueTask(ctx, lead, 'ui-supervisor', [], ['src/ui'])
+  await ctx.agentTeams.queueTasks(lead, [{ ...parent, role: 'supervisor', skills: ['ui-coordination'] }])
+  const supervisor = await dispatchWorker(ctx, lead, parent.name)
+  const children = []
+  for (let index = 0; index < 10; index++) {
+    const task = await ctx.agentTeams.createTask(supervisor, { parentTaskId: parent.taskId,
+      subject: `Component ${index}`, description: dispatchBrief(`src/ui/component-${index}.tsx`), writeScopes: [`src/ui/component-${index}.tsx`] })
+    children.push({ taskId: task.id, expectedRevision: task.revision, name: `specialist-${index}`, provider: 'spawn',
+      isolation: 'shared' as const, skills: [`specialty-${index}`], agentOptions: { provider: 'mock', model: `specialist-model-${index}` } })
+  }
+  await expect(ctx.agentTeams.createTask(supervisor, { subject: 'Unrelated', description: dispatchBrief() })).rejects.toThrow('parent_task_id')
+  await expect(ctx.agentTeams.createTask(supervisor, { parentTaskId: parent.taskId, subject: 'Escape package',
+    description: dispatchBrief('server/auth.ts'), writeScopes: ['server/auth.ts'] })).rejects.toThrow('contained write scopes')
+  await ctx.agentTeams.queueTasks(supervisor, children)
+  const workers = await Promise.all(children.map(child => dispatchWorker(ctx, lead, child.name)))
+  expect(workers).toHaveLength(10)
+  const workerRequests = adapter.requests.filter(request => workers.some(worker => worker.id === request.sessionId))
+  expect(new Set(workerRequests.map(request => request.model)).size).toBe(10)
+  await vi.waitFor(() => { expect(ctx.agentTeams.listDispatches(lead).filter(item => item.phase === 'running')).toHaveLength(11) })
+  const [first] = children, [worker] = workers
+  await expect(ctx.agentTeams.updateTask(supervisor, { taskId: parent.taskId, expectedRevision: 2, action: 'complete', evidence: 'self-approved' })).rejects.toThrow()
+  await expect(ctx.agentTeams.reportTask(supervisor, parent.taskId, 'ready', dispatchReport)).rejects.toThrow('child tasks')
+  await expect(ctx.agentTeams.queueTasks(worker!, [await queueTask(ctx, lead, 'unrelated-reader')])).rejects.toThrow('assigned supervisor')
+  await ctx.agentTeams.reportTask(worker!, first!.taskId, 'ready', dispatchReport)
+  await expect(ctx.agentTeams.updateTask(workers[1]!, { taskId: first!.taskId, expectedRevision: 2, action: 'complete', evidence: 'peer approved' })).rejects.toThrow('Only the supervisor')
+  await ctx.agentTeams.updateTask(supervisor, { taskId: first!.taskId, expectedRevision: 2, action: 'complete', evidence: 'Inspected scoped diff and executed component assertions' })
+  expect(ctx.agentTeams.getTask(lead, first!.taskId).status).toBe('completed')
+  expect(durable(lead).tasks.find(task => task.id === first!.taskId)?.parentTaskId).toBe(parent.taskId)
+  const state = lead.session.snapshotEvents().reduce((state, event) => teamProjectionDefinition.apply(state, event),
+    teamProjectionDefinition.init(lead.session.header))
+  const replayed = teamProjectionDefinition.wire.view(state)
+  expect(replayed.tasks.find(task => task.id === first!.taskId)?.parentTaskId).toBe(parent.taskId)
+})
+
+it('releases an idle supervisor slot, wakes it on a child report and drains the subtree on cancellation', async () => {
+  const { ctx, lead } = await setupDispatch(1)
+  const parent = await queueTask(ctx, lead, 'waiting-manager', [], ['src/ui'])
+  await ctx.agentTeams.queueTasks(lead, [{ ...parent, role: 'supervisor' }])
+  const supervisor = await dispatchWorker(ctx, lead, parent.name)
+  const task = await ctx.agentTeams.createTask(supervisor, { parentTaskId: parent.taskId,
+    subject: 'Scoped child', description: dispatchBrief('src/ui/button.tsx'), writeScopes: ['src/ui/button.tsx'] })
+  await ctx.agentTeams.queueTasks(supervisor, [{ taskId: task.id, expectedRevision: 1, name: 'waiting-child',
+    provider: 'spawn', isolation: 'shared', agentOptions: { provider: 'mock', model: 'mock' } }])
+  expect(ctx.agentTeams.listDispatches(lead).find(item => item.taskId === task.id)?.phase).toBe('queued')
+  ctx.agentTeams.interrupt(lead, parent.name)
+  await vi.waitFor(() => { expect(ctx.agentTeams.listDispatches(lead).find(item => item.taskId === parent.taskId)?.phase).toBe('waiting') })
+  const child = await dispatchWorker(ctx, lead, 'waiting-child')
+  const oldTurns = supervisor.session.snapshotEvents().filter(event => event.type === 'turn/start').length
+  await ctx.agentTeams.reportTask(child, task.id, 'ready', dispatchReport)
+  await vi.waitFor(() => { expect(ctx.agents.get(supervisor.id)?.session.snapshotEvents().filter(event => event.type === 'turn/start').length).toBeGreaterThan(oldTurns) })
+  await ctx.agentTeams.cancelDispatch(lead, parent.taskId)
+  expect(ctx.agents.get(child.id)).toBeUndefined()
+  expect(ctx.agents.get(supervisor.id)).toBeUndefined()
+  expect(ctx.agentTeams.getTask(lead, parent.taskId)).toMatchObject({ status: 'pending' })
+  expect(ctx.agentTeams.getTask(lead, task.id)).toMatchObject({ status: 'pending' })
+  expect(ctx.agentTeams.listDispatches(lead).every(item => item.phase === 'cancelled')).toBe(true)
 })

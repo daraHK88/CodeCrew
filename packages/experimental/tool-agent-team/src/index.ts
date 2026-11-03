@@ -8,7 +8,8 @@ import { TeamTaskId, assertTaskBrief } from '@deepseek-ai/dsh-experimental-agent
 import type { TeamMemberView } from '@deepseek-ai/dsh-experimental-agent-team'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import { installUiRouting } from './ui-routing.ts'
-import { installDecisionSkillRouting, routeDecisionWorker, routeDecisionWorkers } from './decision-routing.ts'
+import { routeWorkerAssignments } from './worker-skills.ts'
+import { installDecisionSkillRouting, routeDecisionWorker } from './decision-routing.ts'
 import { decisionDefaults, decisionSchema, installDecisionTool, type DecisionSettings } from './decisions.ts'
 import type { InferValue, ValueSchemaSpec, ToolDefinition } from '@deepseek-ai/dsh-tools'
 
@@ -88,7 +89,7 @@ function teamPolicy(interrupt: boolean): string {
 
 For substantial new UI, create and inspect a mobile/desktop visual reference BEFORE production edits. Read the user's short UI checklist, preserve its applicable criteria in the worker acceptance checks, and compare the integrated result against both checklist and reference before completion. Do not replace this with a prose plan or functional tests. Reuse verification tools; do not author a large browser harness when an existing one covers the task.
 
-Coding workflow: the Lead owns the goal, acceptance checks, integration, and final verification. Complete small, well-scoped edits directly; do not create a team, a planning ceremony, or an extra model-based gate for a mechanical change. For larger work, create shared tasks and blocked_by dependencies first. Include the overall goal and constraints on the first team_dispatch so the coordinator can restore them after interruption. Use team_checkpoint when the goal or next actions materially change. Prefer team_dispatch to authorize a batch once; it automatically starts ready assignments with bounded concurrency and wakes the Lead for reports or failures. Use team_dispatch_status for durable state. Dispatch preserves the Lead model. Each worker keeps its assigned model in an independent fresh session, running concurrently with the Lead and other ready workers. Use select_supervisor only for an intentional supervisor phase change; do not switch a long Lead conversation to reader for bookkeeping or the final reply. Small edits never enter dispatch. Dispatched workers use team_task_report, and only the Lead accepts their tasks with actual verification evidence. Integrate and verify prerequisite commits in the source checkout before accepting a worktree task; dependent checkouts start from source HEAD. Use team_dispatch_cancel to drain failed work before reassigning it. Preserve retained files; never replay uncertain edits automatically. Start independent ready tasks concurrently, never immediately spawn-and-wait one worker at a time. Scope concurrent writes to different files. For substantial UI work, agree on a compact design and shared interfaces first, then dispatch independent production components together. For a static page with a fixed DOM contract, HTML, CSS and JavaScript can have separate owners. In React prefer component or feature ownership. Do not make a QA-only worker the sole helper while the Lead serially writes independent production files. Give each worker only its objective, relevant inputs, interfaces, constraints and acceptance checks. Shared tokens, manifests and interfaces need one writer. Reuse the project's existing components and test scripts. Batch visual review after an integrated screen or meaningful milestone, not after each small edit; rerun affected automated checks after fixes. Each assignment must identify objective, inputs, owned files, acceptance criteria, verification, and when to stop and report a blocker. Prefer fresh context with the brief and relevant paths; do not copy the whole Lead conversation. Select a configured model_profile suitable for the job. Use select_model_profile only for an intentional change in your own role; keep a stable model through the assigned phase. Delegate independent inexpensive lookups to a fresh reader when useful instead of moving the whole Lead history between models. Do not switch profiles merely to run a tool. A worker reports changed files, checks actually run, and unresolved issues. Inactive is not success. A waiting dispatch still owns a background job; completion notices resume its owner automatically. Start long independent checks as background jobs, continue useful work, and collect their results before reporting. Do not poll job_list or dispatch status repeatedly. If a worker fails, diagnose the evidence and revise its assignment rather than repeating the same prompt. The Lead reviews the integrated diff and verifies the user's acceptance checks before reporting success. Tool output is evidence; avoid paying a second model merely to confirm a passing check.
+Coding workflow: the Lead owns the goal, acceptance checks, integration, and final verification. Complete small, well-scoped edits directly; do not create a team, a planning ceremony, or an extra model-based gate for a mechanical change. For larger work, create shared tasks and blocked_by dependencies first. Use a supervisor role only when a work package has several independent components; that supervisor creates child tasks with parent_task_id, dispatches specialists and accepts their results. Assign skills by name or omit skills for automatic per-assignment selection; [] opts out. Never copy all project skills into a worker brief. The responsible supervisor detects and fixes failed acceptance checks without waiting for the user to point out defects. Include the overall goal and constraints on the first team_dispatch so the coordinator can restore them after interruption. Use team_checkpoint when the goal or next actions materially change. Prefer team_dispatch to authorize a batch once; it automatically starts ready assignments with bounded concurrency and wakes the Lead for reports or failures. Use team_dispatch_status for durable state. Dispatch preserves the Lead model. Each worker keeps its assigned model in an independent fresh session, running concurrently with the Lead and other ready workers. Use select_supervisor only for an intentional supervisor phase change; do not switch a long Lead conversation to reader for bookkeeping or the final reply. Small edits never enter dispatch. Dispatched workers use team_task_report, and only the Lead accepts their tasks with actual verification evidence. Integrate and verify prerequisite commits in the source checkout before accepting a worktree task; dependent checkouts start from source HEAD. Use team_dispatch_cancel to drain failed work before reassigning it. Preserve retained files; never replay uncertain edits automatically. Start independent ready tasks concurrently, never immediately spawn-and-wait one worker at a time. Scope concurrent writes to different files. For substantial UI work, agree on a compact design and shared interfaces first, then dispatch independent production components together. For a static page with a fixed DOM contract, HTML, CSS and JavaScript can have separate owners. In React prefer component or feature ownership. Do not make a QA-only worker the sole helper while the Lead serially writes independent production files. Give each worker only its objective, relevant inputs, interfaces, constraints and acceptance checks. Shared tokens, manifests and interfaces need one writer. Reuse the project's existing components and test scripts. Batch visual review after an integrated screen or meaningful milestone, not after each small edit; rerun affected automated checks after fixes. Each assignment must identify objective, inputs, owned files, acceptance criteria, verification, and when to stop and report a blocker. Prefer fresh context with the brief and relevant paths; do not copy the whole Lead conversation. Select a configured model_profile suitable for the job. Use select_model_profile only for an intentional change in your own role; keep a stable model through the assigned phase. Delegate independent inexpensive lookups to a fresh reader when useful instead of moving the whole Lead history between models. Do not switch profiles merely to run a tool. A worker reports changed files, checks actually run, and unresolved issues. Inactive is not success. A waiting dispatch still owns a background job; completion notices resume its owner automatically. Start long independent checks as background jobs, continue useful work, and collect their results before reporting. Do not poll job_list or dispatch status repeatedly. If a worker fails, diagnose the evidence and revise its assignment rather than repeating the same prompt. The Lead reviews the integrated diff and verifies the user's acceptance checks before reporting success. Tool output is evidence; avoid paying a second model merely to confirm a passing check.
 
 Manually spawned teammates and shared dispatch assignments inherit the Lead checkout. Worktree dispatch assignments start in their own retained checkout; the Lead must integrate their commits. Agents still share filesystem access under the existing sandbox; worktrees isolate edits, not OS permissions. Split write work into disjoint scopes, record expected write scopes on shared tasks, and use task dependencies when work must be ordered. Write-scope overlap is advisory, not a lock.
 
@@ -102,8 +103,8 @@ const LEAD_ONLY_TOOLS = new Set([
   'team_dispatch', 'team_dispatch_status', 'team_dispatch_cancel', 'team_task_create',
 ])
 
-const workerPolicy = `Complete only your assigned task using its inputs, owned files, interfaces and acceptance checks. The Lead owns planning, model selection, integration and final acceptance. Do not create a team or repeat the full design workflow. Use the supplied design and relevant criteria; ask the Lead when a required input is missing. Load a skill only when this assignment needs guidance beyond its brief.
-Respect other writers. On FS_STALE_VERSION, read current content before retrying; shell writes and generators also need coordination. Report changed files, checks actually run and remaining blockers with team_task_report; do not accept your own task. Send concise questions to lead. Finish your background jobs before reporting. If blocked, report evidence and stop retrying. Inactive peers are not necessarily finished; messages wake them. wait_agent observes future changes only and cannot wake peers.`
+const workerPolicy = `Complete only your assigned task using its inputs, owned files, interfaces and acceptance checks. Your assignment supervisor owns planning, model selection, integration and acceptance. Do not create a team or repeat the full design workflow. Use the supplied design and relevant criteria; ask your assignment supervisor when a required input is missing. Load a skill only when this assignment needs guidance beyond its brief.
+Respect other writers. On FS_STALE_VERSION, read current content before retrying; shell writes and generators also need coordination. Report changed files, checks actually run and remaining blockers with team_task_report; do not accept your own task. Send concise questions to your assignment supervisor named in runtime context. Finish your background jobs before reporting. If blocked, report evidence and stop retrying. Inactive peers are not necessarily finished; messages wake them. wait_agent observes future changes only and cannot wake peers.`
 
 const decisionPolicy = 'Use coding_decide for narrow semantic decisions about approved model profiles, relevant skills, file evidence, safe parallel work, failure recovery or retained screenshots. Batch related questions. Advice is not permission, verification, or a completion gate. Use recipe review for review-depth triage, coverage for supplied requirements/tests, rules for a proposed change, browser for current-page evidence, compaction for checkpoint readiness, and rank_files for an explicit file shortlist. Use typed custom questions for next browser actions and rubric scores. Review triage errors require the full review. Advice never performs clicks, edits or compaction. On uncertainty, timeout or failure, continue with supervisor judgment rather than repeating the call.'
 
@@ -141,6 +142,7 @@ const TASK_VIEW_SCHEMA = {
   type: 'object',
   additionalProperties: false,
   properties: {
+    parentTaskId: { type: 'string' },
     id: { type: 'string', required: true },
     revision: { type: 'integer', required: true },
     subject: { type: 'string', required: true },
@@ -242,6 +244,7 @@ const CHECKPOINT_SCHEMA = { type: 'object', additionalProperties: false, propert
 
 const DISPATCH_VIEW_SCHEMA = {
   type: 'object', additionalProperties: false, properties: {
+    role: { type: 'string', enum: ['supervisor'] }, skills: { type: 'array', items: { type: 'string' } },
     taskId: { type: 'string', required: true }, revision: { type: 'integer', required: true }, name: { type: 'string', required: true },
     phase: { type: 'string', required: true, enum: ['queued', 'starting', 'running', 'waiting', 'review', 'blocked', 'cancelled'] },
     taskStatus: { type: 'string', required: true, enum: ['pending', 'in_progress', 'completed', 'deleted'] },
@@ -268,24 +271,42 @@ function callingAgent(agent: Agent | undefined, toolName: string): Agent {
 /** Register coordination or execution tools for one exact Team role. */
 function install(agent: Agent, ctx: Context, config: Required<Omit<Config, 'coding'>> & { coding: () => CodingTeamSettings }): () => void {
   const scoped = agent.ctx
-  const lead = ctx.agentTeams.membership(agent).role === 'lead'
+  const membership = ctx.agentTeams.membership(agent)
+  const lead = membership.role === 'lead'
+  const ownAssignment = lead ? undefined : ctx.agentTeams.listDispatches(agent).find(item => item.name === membership.name)
+  const supervisor = ownAssignment?.role === 'supervisor'
+  const managerTools = new Set(['team_task_create', 'team_dispatch', 'team_dispatch_status', 'team_dispatch_cancel'])
+  const visibleTaskIds = (caller: Agent): Set<string> => {
+    const tasks = ctx.agentTeams.listTasks(caller)
+    if (lead || ownAssignment === undefined) return new Set(tasks.map(task => task.id))
+    const visible = new Set<string>([ownAssignment.taskId])
+    if (supervisor) {
+      for (let size = -1; size !== visible.size;) {
+        size = visible.size
+        for (const task of tasks) if (task.parentTaskId !== undefined && visible.has(task.parentTaskId)) visible.add(task.id)
+      }
+    }
+    return visible
+  }
   const disposers: Array<() => unknown> = []
   const register = (disposer: () => unknown): void => { disposers.push(disposer) }
   const registerTool = (tool: ToolDefinition): void => {
-    if (lead || !LEAD_ONLY_TOOLS.has(tool.name)) register(scoped.tools.register(tool))
+    if (lead || (supervisor && managerTools.has(tool.name)) || !LEAD_ONLY_TOOLS.has(tool.name)) register(scoped.tools.register(tool))
   }
   try {
     if (!lead) {
       if (config.workerTools.length > 0) register(scoped.tools.restrict({ allow: config.workerTools }))
-      const inherited = [...LEAD_ONLY_TOOLS].filter(name => ctx.tools.get(name, agent) !== undefined)
+      const inherited = [...LEAD_ONLY_TOOLS].filter(name =>
+        !(supervisor && managerTools.has(name)) && ctx.tools.get(name, agent) !== undefined)
       if (inherited.length > 0) register(scoped.tools.restrict({ deny: inherited }))
       register(scoped.on('skills/select-automatic', async (input, next) => {
         const selected = await next()
-        return input.agent === agent
-          ? selected.filter(name => name !== 'design-distinctive-frontends' && name !== 'impeccable') : selected
+        if (input.agent !== agent) return selected
+        if (ownAssignment?.skills !== undefined) return [...ownAssignment.skills]
+        return selected.filter(name => name !== 'design-distinctive-frontends' && name !== 'impeccable')
       }))
     }
-    const advisor = installDecisionTool(scoped, agent, () => config.coding().decisions ?? decisionDefaults)
+    const advisor = installDecisionTool(scoped, agent, () => config.coding().decisions ?? decisionDefaults, lead || supervisor)
     register(advisor)
     if (lead) register(installDecisionSkillRouting(scoped, agent, advisor, () => config.coding().decisions ?? decisionDefaults))
     register(installUiRouting(agent, config.coding))
@@ -293,7 +314,9 @@ function install(agent: Agent, ctx: Context, config: Required<Omit<Config, 'codi
       name: 'team:policy',
       order: scoped.systemPrompt.getSectionOrder('TEAM_POLICY'),
       text: () => {
-        if (!lead) return workerPolicy
+        if (!lead) return supervisor
+          ? `You supervise work package ${ownAssignment.taskId}. Create child tasks with parent_task_id, short six-section briefs and contained write scopes. Dispatch independent specialists together; omit skills for bounded automatic selection or pin only the relevant skill names. Do not edit files owned by children. Review actual changes and checks before accepting each child. Report your package only after every child is accepted. Your parent supervisor accepts your own result. Never alter the project-wide goal or Lead model.\nApproved worker profiles: ${JSON.stringify(config.coding().workerProfiles)}`
+          : workerPolicy
         const coding = config.coding()
         const advice = coding.decisions?.enabled ? `${decisionPolicy}\n${coding.decisions.autoRouteWorkers
           ? 'Automatic worker routing is enabled. Omit model_profile to let Jev choose among approved profiles; specify it to pin a route. Mechanical lookups use the configured default without a decision call.' : ''}` : ''
@@ -306,11 +329,15 @@ function install(agent: Agent, ctx: Context, config: Required<Omit<Config, 'codi
       required: true,
       text: () => {
         const { role, name } = ctx.agentTeams.membership(agent)
+        const parentId = ownAssignment === undefined ? undefined : ctx.agentTeams.getTask(agent, ownAssignment.taskId).parentTaskId
+        const parent = parentId === undefined ? undefined : ctx.agentTeams.listDispatches(agent).find(item => item.taskId === parentId)
+        const assignmentSupervisor = parent === undefined ? ''
+          : `\nYour assignment supervisor is named "${parent.name}". Send assignment questions to send_message({ target: "${parent.name}", message: "..." }); use the Lead for escalation.`
         return `${role === 'lead'
           ? 'You are the Team Lead named "lead".'
           : `You are teammate "${name}".\nYour Team Lead is named "lead".\nTo message your Team Lead, use send_message({ target: "lead", message: "..." }).`}
 Use list_agents({}) to find your teammates and their names.
-To message another teammate, use send_message({ target: "<teammate name>", message: "..." }).`
+To message another teammate, use send_message({ target: "<teammate name>", message: "..." }).${assignmentSupervisor}`
       },
     }))
 
@@ -432,24 +459,27 @@ To message another teammate, use send_message({ target: "<teammate name>", messa
           task_id: { type: 'string', required: true }, expected_revision: { type: 'integer', required: true },
           name: { type: 'string', required: true, description: 'Unique lower-kebab-case worker name.' },
           model_profile: { type: 'string', description: 'Approved route; omission uses bounded automatic routing or the configured default.' },
+          role: { type: 'string', enum: ['worker', 'supervisor'], description: 'Default worker. A supervisor coordinates descendants of this package; use only when independent components justify it.' },
+          skills: { type: 'array', items: { type: 'string' }, description: 'Exact permitted skill names for this assignment. Omit for bounded automatic selection; [] means none. Pass names, never copied skill bodies.' },
           isolation: { type: 'string', enum: ['shared', 'worktree'], description: 'Defaults to worktree for writes and shared for explicitly read-only assignments. Worktrees start from HEAD when ready; the supervisor integrates prerequisite commits before acceptance.' },
         } } },
       },
       output: jsonOutput({ type: 'object', additionalProperties: false, properties: { queued: { type: 'integer', required: true } } }),
       async execute(args, exec) {
         const caller = callingAgent(exec.agent, 'team_dispatch')
-        if (ctx.agentTeams.membership(caller).role !== 'lead') throw new Error('Only the supervisor may dispatch work')
+        if (!lead && !supervisor) throw new Error('Only the supervisor may dispatch work')
+        if (!lead && (args.goal !== undefined || args.select_supervisor === true || args.checkpoint_revision !== undefined)) throw new Error('Only the Lead may change the project checkpoint or supervisor model')
         const checkpoint = ctx.agentTeams.getCheckpoint(caller)
-        if (config.coding().requireTaskBrief && checkpoint === undefined && !args.goal?.trim()) {
+        if (lead && config.coding().requireTaskBrief && checkpoint === undefined && !args.goal?.trim()) {
           throw new Error('Include the overall goal in the first coding dispatch so it survives interruptions')
         }
         const supervisorName = args.select_supervisor === true ? config.coding().supervisorProfile ?? '' : ''
-        const supervisor = supervisorName === '' ? undefined : config.coding().workerProfiles[supervisorName]
-        if (supervisorName !== '' && supervisor === undefined) {
+        const supervisorRoute = supervisorName === '' ? undefined : config.coding().workerProfiles[supervisorName]
+        if (supervisorName !== '' && supervisorRoute === undefined) {
           throw new Error(`Unknown supervisor model profile: ${supervisorName}`)
         }
-        const selection = supervisor === undefined ? undefined : { provider: supervisor.provider, model: supervisor.model,
-          ...supervisor.reasoningEffort === undefined ? {} : { reasoningEffort: ReasoningEffortId(supervisor.reasoningEffort) } }
+        const selection = supervisorRoute === undefined ? undefined : { provider: supervisorRoute.provider, model: supervisorRoute.model,
+          ...supervisorRoute.reasoningEffort === undefined ? {} : { reasoningEffort: ReasoningEffortId(supervisorRoute.reasoningEffort) } }
         if (selection !== undefined) {
           const llm = ctx.get('llm')
           if (llm === undefined) throw new Error('Supervisor selection requires the LLM service')
@@ -463,18 +493,21 @@ To message another teammate, use send_message({ target: "<teammate name>", messa
             && settings.workerProfiles[assignment.model_profile] === undefined) throw new Error(`Unknown worker model profile: ${assignment.model_profile}`)
           return { assignment, task }
         })
-        const inferred = await routeDecisionWorkers(advisor, settings,
-          tasks.flatMap(({ assignment, task }) => assignment.model_profile === undefined ? [task.description] : []), exec.signal)
+        const inferred = await routeWorkerAssignments(ctx, caller, tasks.map(({ assignment, task }) => ({
+          task: task.description, skills: assignment.skills, profileName: assignment.model_profile,
+          supervisor: assignment.role === 'supervisor',
+        })), advisor, settings, exec.signal)
         let inference = 0
         const requests = []
         for (const { assignment, task } of tasks) {
-          const routed = assignment.model_profile === undefined
-            ? inferred[inference++] ?? { profileName: settings.defaultWorkerProfile } : { profileName: assignment.model_profile }
+          const routed = inferred[inference++] ?? { profileName: settings.defaultWorkerProfile, skills: [] }
           const profile = routed.profileName === '' ? undefined : settings.workerProfiles[routed.profileName]
           if (routed.profileName !== '' && profile === undefined) throw new Error(`Unknown worker model profile: ${routed.profileName}`)
           exec.signal.throwIfAborted()
           requests.push({ taskId: task.id, expectedRevision: assignment.expected_revision, name: assignment.name,
-            isolation: assignment.isolation ?? (task.writeScopes.length > 0 ? 'worktree' as const : 'shared' as const),
+            isolation: assignment.isolation ?? (assignment.role === 'supervisor' || task.writeScopes.length === 0 ? 'shared' as const : 'worktree' as const),
+            ...assignment.role === 'supervisor' ? { role: 'supervisor' as const } : {},
+            skills: routed.skills,
             provider: config.freshProvider,
             ...profile === undefined ? {} : { agentOptions: {
               provider: profile.provider, model: profile.model,
@@ -513,10 +546,13 @@ To message another teammate, use send_message({ target: "<teammate name>", messa
         if (!Number.isSafeInteger(cursor) || cursor < 0 || !Number.isSafeInteger(limit) || limit < 1 || limit > 20) {
           throw new Error('Use a non-negative cursor and limit from 1 through 20')
         }
-        const filtered = ctx.agentTeams.listDispatches(caller).filter(item => args.task_id === undefined || item.taskId === args.task_id)
-        const checkpoint = ctx.agentTeams.getCheckpoint(caller)
+        const visible = visibleTaskIds(caller)
+        const filtered = ctx.agentTeams.listDispatches(caller).filter(item =>
+          visible.has(item.taskId) && (args.task_id === undefined || item.taskId === args.task_id))
+        const checkpoint = lead ? ctx.agentTeams.getCheckpoint(caller) : undefined
         return Promise.resolve({ ...checkpoint === undefined ? {} : { checkpoint },
           assignments: filtered.slice(cursor, cursor + limit).map(item => ({
+            ...item.role === undefined ? {} : { role: item.role }, ...item.skills === undefined ? {} : { skills: [...item.skills] },
             taskId: item.taskId, revision: ctx.agentTeams.getTask(caller, item.taskId).revision,
             name: item.name, phase: item.phase, isolation: item.isolation,
             taskStatus: ctx.agentTeams.getTask(caller, item.taskId).status,
@@ -637,6 +673,7 @@ To message another teammate, use send_message({ target: "<teammate name>", messa
       name: 'team_task_create',
       description: 'Create one unowned pending task on the shared Team task board.',
       parameters: {
+        parent_task_id: { type: 'string', description: 'Work package this task belongs to. Required for a delegated supervisor; child paths must stay inside that package.' },
         subject: { type: 'string', required: true, description: 'Concise task title.' },
         description: { type: 'string', required: true, description: 'Compact assignment: only relevant paths, interface names, constraints and checks; no transcript or unrelated project brief. Use short bullets under: ## Objective, ## Inputs, ## Scope, ## Acceptance, ## Verification, ## Stop conditions.' },
         blocked_by: { type: 'array', items: { type: 'string' }, description: 'Task ids that must complete first.' },
@@ -649,6 +686,7 @@ To message another teammate, use send_message({ target: "<teammate name>", messa
       output: jsonOutput(TASK_SUMMARY_SCHEMA),
       async execute(args, exec) {
         return taskSummary(await ctx.agentTeams.createTask(callingAgent(exec.agent, 'team_task_create'), {
+          ...args.parent_task_id === undefined ? {} : { parentTaskId: TeamTaskId(args.parent_task_id) },
           subject: args.subject,
           description: args.description,
           ...args.blocked_by === undefined ? {} : { blockedBy: args.blocked_by.map(TeamTaskId) },
@@ -674,8 +712,10 @@ To message another teammate, use send_message({ target: "<teammate name>", messa
       output: jsonOutput(TASK_LIST_VALUE_SCHEMA),
       execute(args, exec) {
         const status = args.status
-        const filtered = ctx.agentTeams.listTasks(callingAgent(exec.agent, 'team_task_list')).filter(task =>
-          (status === undefined || task.status === status)
+        const caller = callingAgent(exec.agent, 'team_task_list')
+        const visible = visibleTaskIds(caller)
+        const filtered = ctx.agentTeams.listTasks(caller).filter(task => visible.has(task.id)
+          && (status === undefined || task.status === status)
           && (args.owner === undefined || (args.owner === 'unowned' ? task.ownerName === undefined : task.ownerName === args.owner))
           && (args.ready === undefined || task.ready === args.ready))
         const cursor = args.cursor ?? 0
@@ -727,7 +767,7 @@ To message another teammate, use send_message({ target: "<teammate name>", messa
       async execute(args, exec) {
         const caller = callingAgent(exec.agent, 'team_task_update')
         if (config.coding().requireTaskBrief && args.action === 'complete') {
-          if (ctx.agentTeams.membership(caller).role !== 'lead') throw new Error('Only the supervisor may accept and complete coding tasks; report your result to the Lead')
+          if (!lead && !supervisor) throw new Error('Only the supervisor may accept and complete coding tasks; report your result to the Lead')
           if (!args.evidence?.trim()) throw new Error('Task completion requires verification evidence')
         }
         return taskSummary(await ctx.agentTeams.updateTask(caller, {

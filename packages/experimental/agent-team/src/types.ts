@@ -74,6 +74,8 @@ export type TeamTaskStatus = 'pending' | 'in_progress' | 'completed' | 'deleted'
 
 /** Whole durable task snapshot; every mutation increments {@link revision}. */
 export interface TeamTaskSnapshot {
+  /** Delegated work package whose supervisor owns review of this task. */
+  readonly parentTaskId?: TeamTaskId
   readonly id: TeamTaskId
   readonly revision: number
   readonly subject: string
@@ -112,6 +114,10 @@ export interface TeamTaskReport {
 
 /** A durable supervisor-authorized assignment, keyed by its existing shared task. */
 export interface TeamDispatchSnapshot {
+  /** A supervisor coordinates descendants of its task; omitted means a leaf worker. */
+  readonly role?: 'supervisor'
+  /** Exact permitted skills selected for this assignment; empty means no automatic skill. */
+  readonly skills?: readonly string[]
   readonly taskId: TeamTaskId
   readonly taskRevision: number
   readonly name: string
@@ -126,6 +132,8 @@ export interface TeamDispatchSnapshot {
 
 /** One current task revision the Lead authorizes for bounded automatic dispatch. */
 export interface QueueTeamTaskRequest {
+  readonly role?: 'supervisor'
+  readonly skills?: readonly string[]
   readonly taskId: TeamTaskId
   readonly expectedRevision: number
   readonly name: string
@@ -136,6 +144,7 @@ export interface QueueTeamTaskRequest {
 
 /** Runtime-enriched task view returned to tools and hosts. */
 export interface TeamTaskView {
+  readonly parentTaskId?: TeamTaskId
   readonly id: TeamTaskId
   readonly revision: number
   readonly subject: string
@@ -252,6 +261,7 @@ export interface SendTeamMessageResult {
 
 /** Input for creating one shared task. */
 export interface CreateTeamTaskRequest {
+  readonly parentTaskId?: TeamTaskId
   readonly subject: string
   readonly description: string
   readonly blockedBy?: readonly TeamTaskId[]
