@@ -1,4 +1,4 @@
-/** Bounded OpenRouter decision advice, independent of code-writing model routes. */
+/** Bounded hosted or local decision advice, independent of code-writing model routes. */
 import { DecisionError } from './decision-error.ts'
 export { DecisionError } from './decision-error.ts'
 import type { Context } from '@deepseek-ai/cordis'
@@ -18,9 +18,13 @@ export interface DecisionSettings {
   autoSelectSkills?: boolean
   /** Select an approved worker profile when the supervisor omits model_profile. */
   autoRouteWorkers?: boolean
+  /** Reuse configured reader/implementer/planner/reviewer routes for explicit brief objectives. */
+  reuseWorkerProfiles?: boolean
+  /** Optional loopback System One endpoint; empty uses OpenRouter. Local requests never send hosted credentials or images. */
+  localEndpoint?: string
   /** Allow explicitly selected workspace files to be assessed without returning their contents. */
   inspectFiles?: boolean
-  /** OpenRouter Decisions model identifier. */
+  /** Decision model identifier for the selected hosted or local service. */
   model: string
   /** Credential reference or environment name holding the OpenRouter API key. */
   apiKeyEnv: string
@@ -48,6 +52,7 @@ export const decisionDefaults: DecisionSettings = {
 
 /** Validated decision settings, including latency and request-size limits. */
 export const decisionSchema = z.object({
+  reuseWorkerProfiles: z.boolean().default(false), localEndpoint: z.string().default(''),
   autoSelectSkills: z.boolean().default(false), autoRouteWorkers: z.boolean().default(false), inspectFiles: z.boolean().default(false),
   enabled: z.boolean().default(false), model: z.string().default(decisionDefaults.model),
   apiKeyEnv: z.string().default(decisionDefaults.apiKeyEnv),
@@ -82,6 +87,18 @@ export interface DecisionRequest {
 
 
 const endpoint = 'https://openrouter.ai/api/alpha/decisions'
+
+/** Validate the optional native local endpoint before any credential resolution or request. */
+function decisionEndpoint(settings: DecisionSettings): string {
+  if (!settings.localEndpoint?.trim()) return endpoint
+  let url: URL
+  try { url = new URL(settings.localEndpoint.trim()) } catch { throw new DecisionError('DECISION_ENDPOINT_INVALID', 'Use a loopback HTTP endpoint ending in /v1/systemone.') }
+  if (url.protocol !== 'http:' || !['127.0.0.1', '[::1]'].includes(url.hostname)
+    || url.username || url.password || url.search || url.hash || url.pathname !== '/v1/systemone') {
+    throw new DecisionError('DECISION_ENDPOINT_INVALID', 'Use a loopback HTTP endpoint ending in /v1/systemone.')
+  }
+  return url.href
+}
 const identifier = /^[a-z][a-z0-9_]{0,47}$/
 const record = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value)
 const probability = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 1
@@ -172,6 +189,11 @@ export async function submitDecision(
 ): Promise<InferValue<typeof decisionResultSchema>> {
   validateInput(settings, input)
   signal.throwIfAborted()
+  const target = decisionEndpoint(settings)
+  const local = target !== endpoint
+  if (local && (images.length > 0 || (input.image_count ?? 0) > 0)) {
+    throw new DecisionError('DECISION_LOCAL_IMAGES', 'The local decision route accepts text only. Select the hosted advisor explicitly for images.')
+  }
   const imageBytes = images.reduce((sum, image) => sum + image.data.byteLength, 0)
   if (images.length !== (input.image_count ?? 0) || imageBytes > settings.maxImageBytes) {
     throw new DecisionError('DECISION_IMAGE_LIMIT', 'Requested session images are missing or exceed the configured image budget.')
@@ -188,8 +210,8 @@ export async function submitDecision(
   const started = performance.now()
   let value: unknown
   try {
-    const response = await fetch(endpoint, {
-      method: 'POST', headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json', 'X-Title': 'CodeCrew' },
+    const response = await fetch(target, {
+      method: 'POST', redirect: 'error', headers: { ...local ? {} : { Authorization: `Bearer ${apiKey}` }, 'Content-Type': 'application/json', 'X-Title': 'CodeCrew' },
       body: JSON.stringify(body), signal: AbortSignal.any([signal, deadline]),
     })
     if (!response.ok) {
@@ -301,11 +323,12 @@ export function installDecisionTool(ctx: Context, agent: Agent, settings: () => 
     const policy = settings()
     validateInput(policy, input)
     signal.throwIfAborted()
-    const key = await ctx.get('credentials')?.resolve(credentialRef(policy.apiKeyEnv))
-    if (!key?.value) throw new DecisionError('DECISION_CREDENTIAL_REQUIRED', 'Configure the OpenRouter credential in Models settings before using decision advice.')
+    const local = decisionEndpoint(policy) !== endpoint
+    const key = local ? undefined : await ctx.get('credentials')?.resolve(credentialRef(policy.apiKeyEnv))
+    if (!local && !key?.value) throw new DecisionError('DECISION_CREDENTIAL_REQUIRED', 'Configure the OpenRouter credential in Models settings before using decision advice.')
     if (budget.calls >= policy.maxCallsPerTurn) throw new DecisionError('DECISION_BUDGET', 'Decision request budget reached for this turn. Continue with supervisor judgment.')
     budget.calls++
-    return submitDecision(policy, input, key.value, images, signal)
+    return submitDecision(policy, input, key?.value ?? '', images, signal)
   }
   const stopTool = ctx.tools.register(defineTool({
     name: 'coding_decide',

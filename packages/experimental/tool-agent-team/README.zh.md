@@ -129,6 +129,10 @@ member scope 上的一个 `team:policy` 段落说明共享的协作规则；固�
 
 `team_dispatch` 默认保留 Lead 模型。显式传入 `select_supervisor: true` 才会选择 `coding.supervisorProfile` 指定的获准路由；排队前验证，下一步生效，不改变全局聊天默认值。空值保留 Lead 模型。Worker 路由独立固定，不改变 Lead。未指定模型的 worker brief 按配置的问题数量上限合并请求，并共享既有字节、超时及每轮请求预算；显式模型跳过建议。常规任务保留确定性快速路径，不确定或失败的建议保留默认 worker 配置。
 
+`coding.decisions.reuseWorkerProfiles` 在 Objective 以明确的实现、规划或审查动作开头时复用已保存的 `implementer`、`planner` 和 `reviewer` 配置。CodeCrew 启用此项，插件默认关闭。显式配置优先；机械任务保留既有快速路径；职责不明确或对应配置缺失时仍使用顾问。这减少模型选择调用，但角色映射并非实测模型质量；技能仍按具体任务选择。路由在分派时固定。
+
+`coding.decisions.localEndpoint` 可选择 LM Studio 等回环 HTTP `/v1/systemone` 服务，`model` 填写已加载决策模型的 ID。空值保留 OpenRouter。本地请求只接受文本，不发送托管凭据，拒绝重定向，且不会转向云端重试。普通聊天模型不实现此决策协议，必须加载兼容决策模型。使用短上下文、单个本地推理槽位和空闲卸载计时器，启用前测量准确率及资源占用。Settings → Coding 提供这些全局控件。
+
 启用 `coding.decisions.enabled` 后，`coding_decide` 提供有界的 OpenRouter 决策建议，与聊天模型分离。它批量处理 Choice、Noul（是非概率）和 Score（有序量表）问题。低于阈值的答案保持不确定；无效或自相矛盾的响应返回脱敏错误码。置信度不超过由概率分布计算的值；Choice/Score 缺少置信度时不作选择，Noul 使用 `abs(2p-1)`。置信度是分布统计量，不是正确性证明。超时、完整文本字节上限和共享的每轮请求预算限制开销。不自动重试或执行工作流动作。仍支持显式选择保留的图像；拒绝远程图像 URL。不返回凭据或提供方错误正文。工具建议单独报告模型、用量和耗时，不混入聊天模型统计。
 
 动态 `coding` 配置可要求 `spawn_teammate` 指定就绪的 `task_id`，且任务须包含非空 Markdown 节：Objective、Inputs、Scope、Acceptance、Verification 和 Stop conditions。任务描述加入 worker 提示词。`model_profile` 选择获准的 `workerProfiles` 路由，否则采用可选自动路由或 `defaultWorkerProfile`；提供方、模型、推理强度和输出上限通过原生 subagent 选项传入。启用 `requireTaskBrief` 时，仅 Lead 能完成任务，并须提供非空验证证据。`select_model_profile` 经 LLM 配置验证后，在下一步为调用 agent 选择获准路由，不保存全局默认值；worker 输出限制不改变调用者的输出限制。`team_dispatch` 提供持久的就绪任务调度；主管仍须独立验证证据。即使手动委派不要求 brief，分派也始终要求完整 brief。写入任务默认使用 worktree；明确只读的任务可共享 checkout，Scope 须以 `None` 开头。获准模型路由在排队时固定，全局设置变化不会暗中改写已授权任务。并发上限由 Team 服务配置。失败或取消后须先检查，再以新的 worker 名字重新授权。

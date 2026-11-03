@@ -24,6 +24,8 @@ export interface CodingValues {
       minConfidence: number
       autoSelectSkills?: boolean
       autoRouteWorkers?: boolean
+      reuseWorkerProfiles?: boolean
+      localEndpoint?: string
       inspectFiles?: boolean
     }
   } }
@@ -39,7 +41,9 @@ export const codingEn = {
   uiProfile: 'UI design and build profile', uiProfileHint: 'Use this approved lead profile for substantial UI work selected by automatic skills. Exact visual edits keep the chat model.',
   workers: 'Worker models', workerHint: 'The supervisor selects a profile for each assignment. Reader is the default for delegated lookups.',
   decisions: 'Decision advisor', decisionEnabled: 'Use a decision model for ambiguous choices', decisionModel: 'Decision model ID',
-  decisionHint: 'Uses the OpenRouter Decisions API for short choices and optional session images. Routine edits skip it. Advice does not replace tests or supervisor judgment.',
+  decisionHint: 'Uses OpenRouter by default. An optional local System One endpoint accepts text only, sends no hosted key and never retries in the cloud. Load a compatible decision model first. Advice does not replace tests or supervisor judgment.',
+  localEndpoint: 'Local decision endpoint (optional)', localEndpointHint: 'For LM Studio: http://127.0.0.1:1234/v1/systemone. Leave empty for OpenRouter. Use the loaded model ID above.',
+  reuseWorkerProfiles: 'Reuse saved role models for clear objectives',
   autoSelectSkills: 'Use Jev when local skill rules do not match', autoRouteWorkers: 'Choose worker models automatically when no profile is specified',
   inspectFiles: 'Allow bounded assessment of explicitly selected workspace files',
   reader: 'Read and inspect', implementer: 'Implement', reviewer: 'Review', planner: 'Plan',
@@ -104,6 +108,12 @@ export function CodingSection(props: InjectFace<CodingInjected>) {
     </section>
     <section className={css.card}>
       <h3>{t('workers')}</h3><p className={css.hint}>{t('workerHint')}</p>
+      <label className={css.toggle}>
+        <input type="checkbox" checked={team.value?.coding.decisions?.reuseWorkerProfiles ?? false}
+          disabled={!team.writable || status === 'saving'}
+          onChange={(event) => { void save(() => props.save('team', ['coding', 'decisions', 'reuseWorkerProfiles'], event.target.checked)) }} />
+        <span>{t('reuseWorkerProfiles')}</span>
+      </label>
       {Object.entries(team.value?.coding.workerProfiles ?? {}).map(([profile, route]) => picker(`coding-worker-${profile}`, profile in codingEn ? t(profile as keyof typeof codingEn) : profile, route, team.writable, profile))}
       <label className={css.field} htmlFor="coding-supervisor-profile">
         <span>{t('supervisor')}</span>
@@ -156,6 +166,18 @@ export function CodingSection(props: InjectFace<CodingInjected>) {
             }
           }} />
       </label>
+      <label className={css.field} htmlFor="coding-local-decision-endpoint">
+        <span>{t('localEndpoint')}</span>
+        <input id="coding-local-decision-endpoint" type="text" key={team.value?.coding.decisions?.localEndpoint}
+          defaultValue={team.value?.coding.decisions?.localEndpoint ?? ''} disabled={!team.writable || status === 'saving'}
+          onBlur={(event) => {
+            const value = event.target.value.trim()
+            if (value !== (team.value?.coding.decisions?.localEndpoint ?? '')) {
+              void save(() => props.save('team', ['coding', 'decisions', 'localEndpoint'], value))
+            }
+          }} />
+      </label>
+      <p className={css.hint}>{t('localEndpointHint')}</p>
       {(['autoSelectSkills', 'autoRouteWorkers', 'inspectFiles'] as const).map(key => (
         <label className={css.toggle} key={key}>
           <input type="checkbox" checked={team.value?.coding.decisions?.[key] ?? false}

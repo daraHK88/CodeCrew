@@ -126,7 +126,7 @@ Models 页面包含 **DeepSeek 账号**（`deepseek-account`，英文为 **DeepS
 
 ## 编码策略
 
-挂载全局 `coding-settings` 插件时，Settings 提供 Coding 页面，用于设置全局默认模型、获准 worker 路由、任务范围策略、自动技能、记忆和并行工具调用。模型选项来自实时提供方目录。每次修改均通过现有受版本保护的配置表单保存，并显示保存中、成功或失败状态。聊天内模型选择不保存此全局默认值。 Decision advisor 控件可分别启用 Jev 技能后备选择、未指定模型的 worker 自动路由和显式工作区文件的有界判断。
+挂载全局 `coding-settings` 插件时，Settings 提供 Coding 页面，用于设置全局默认模型、获准 worker 路由、任务范围策略、自动技能、记忆和并行工具调用。模型选项来自实时提供方目录。每次修改均通过现有受版本保护的配置表单保存，并显示保存中、成功或失败状态。聊天内模型选择不保存此全局默认值。 Decision advisor 控件可分别启用 Jev 技能后备选择、未指定模型的 worker 自动路由和显式工作区文件的有界判断。 同一页面也可为明确职责复用已保存模型，并选择可选的仅文本回环决策端点。本地选择不改变聊天或 worker 模型；参见[决策路由契约](../../experimental/tool-agent-team/README.zh.md#coding-policy)。
 
 ## 协调与路由
 

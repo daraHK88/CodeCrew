@@ -34,6 +34,30 @@ it('batches finite choices through Decisions without a chat-completions request'
   expect(JSON.stringify(result)).not.toContain('fixture-key')
 })
 
+it('uses the native local endpoint without forwarding the hosted credential or allowing redirects', async () => {
+  const fetcher = vi.fn<typeof fetch>().mockResolvedValue(Response.json(answer()))
+  vi.stubGlobal('fetch', fetcher)
+  await submitDecision({ ...settings, localEndpoint: 'http://127.0.0.1:1234/v1/systemone' }, input, 'hosted-secret', [], signal)
+  expect(fetcher.mock.calls[0]?.[0]).toBe('http://127.0.0.1:1234/v1/systemone')
+  expect(fetcher.mock.calls[0]?.[1]?.redirect).toBe('error')
+  expect(JSON.stringify(fetcher.mock.calls)).not.toContain('hosted-secret')
+})
+
+it.each(['https://example.com/v1/systemone', 'http://localhost/v1/systemone', 'http://127.0.0.1.evil.test/v1/systemone',
+  'http://user:secret@127.0.0.1/v1/systemone', 'http://127.0.0.1/v1/systemone?key=secret', 'http://127.0.0.1/v1/chat/completions'])('rejects an invalid local decision destination: %s', async (localEndpoint) => {
+  const fetcher = vi.fn(); vi.stubGlobal('fetch', fetcher)
+  await expect(submitDecision({ ...settings, localEndpoint }, input, '', [], signal)).rejects.toMatchObject({ code: 'DECISION_ENDPOINT_INVALID' })
+  expect(fetcher).not.toHaveBeenCalled()
+})
+
+it('refuses local images without silently falling back to a cloud model', async () => {
+  const fetcher = vi.fn(); vi.stubGlobal('fetch', fetcher)
+  await expect(submitDecision({ ...settings, localEndpoint: 'http://127.0.0.1:1234/v1/systemone' },
+    { ...input, image_count: 1 }, '', [{ attachmentId: 'fixture', mediaType: 'image/png', data: new Uint8Array([1]) }], signal))
+    .rejects.toMatchObject({ code: 'DECISION_LOCAL_IMAGES' })
+  expect(fetcher).not.toHaveBeenCalled()
+})
+
 it('abstains on low or missing confidence instead of inventing a successful decision', async () => {
   const payload = answer(0.4)
   vi.stubGlobal('fetch', vi.fn().mockImplementation(() => Promise.resolve(Response.json(payload))))

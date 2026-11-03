@@ -4,7 +4,7 @@ import type { Agent } from '@deepseek-ai/dsh-agent'
 import { isModelInvocable, renderSkillContent } from '@deepseek-ai/dsh-skill'
 import type { DecisionInput, installDecisionTool } from './decisions.ts'
 import { DecisionError, decisionDefaults, decisionTextBytes } from './decisions.ts'
-import { routineDecisionTask } from './decision-routing.ts'
+import { routineWorkerTask, savedWorkerProfile } from './decision-routing.ts'
 import type { CodingTeamSettings } from './index.ts'
 
 type Advisor = ReturnType<typeof installDecisionTool>
@@ -15,15 +15,6 @@ interface AssignmentInput {
   readonly supervisor: boolean
 }
 interface AssignmentRoute { profileName: string; skills: string[] }
-
-/** Mechanical brief objectives keep the reader route even when wrapped in six required sections. */
-function routineAssignment(task: string): boolean {
-  const objective = /^#{1,6}\s+Objective\s*\r?\n([\s\S]*?)(?=^#{1,6}\s|$)/im.exec(task)?.[1]?.trim()
-  if (objective === undefined) return routineDecisionTask(task)
-  return /^(?:read|list|show|open|cat|grep|find the file|run (?:the )?(?:tests?|build|lint|typecheck))\b/i.test(objective)
-    && !/\b(?:analy[sz]e|architecture|security|investigate|diagnos\w*|review|audit|plan|design)\b/i.test(objective)
-    && /^#{1,6}\s+Scope\s*\r?\n\s*None\b/im.test(task)
-}
 
 /**
  * Resolve exact choices or bounded Jev choices using metadata, never the Lead's conversation or complete skill bodies.
@@ -40,7 +31,7 @@ export async function routeWorkerAssignments(ctx: Context, agent: Agent, assignm
   const policy = settings.decisions ?? decisionDefaults
   const registry = ctx.get('skills'), cwd = ctx.get('workingDirectory')
   const selectSkills = policy.enabled && policy.autoSelectSkills
-    && assignments.some(item => item.skills === undefined && !routineAssignment(item.task))
+    && assignments.some(item => item.skills === undefined && !routineWorkerTask(item.task))
   const needsSkills = selectSkills || assignments.some(item => (item.skills?.length ?? 0) > 0)
   const lookup = !needsSkills || registry === undefined || cwd === undefined
     ? undefined : { cwd: await cwd.ensure(agent, signal), signal, scope: agent }
@@ -65,12 +56,14 @@ export async function routeWorkerAssignments(ctx: Context, agent: Agent, assignm
   const routes: AssignmentRoute[] = []
   const questions: { index: number; task: string; route: AssignmentRoute; kind: 'profile' | 'skill'; options: { id: string; description: string }[]; values: string[] }[] = []
   for (const [index, item] of assignments.entries()) {
-    const routine = routineAssignment(item.task)
-    const route = { profileName: item.profileName ?? (routine && settings.workerProfiles.reader !== undefined ? 'reader' : settings.defaultWorkerProfile),
+    const routine = routineWorkerTask(item.task)
+    const savedProfile = savedWorkerProfile(item.task, settings)
+    const route = { profileName: item.profileName ?? (routine && settings.workerProfiles.reader !== undefined ? 'reader' : savedProfile ?? settings.defaultWorkerProfile),
       skills: item.skills === undefined ? [] : await validate(item.skills) }
     routes.push(route)
     if (!policy.enabled || routine) continue
-    if (item.profileName === undefined && policy.autoRouteWorkers && profiles.length > 1 && profiles.length <= policy.maxOptions) {
+    if (item.profileName === undefined && savedProfile === undefined && policy.autoRouteWorkers
+      && profiles.length > 1 && profiles.length <= policy.maxOptions) {
       questions.push({ index, task: item.task, route, kind: 'profile', values: profiles.map(([name]) => name),
         options: profiles.map(([name, route], offset) => ({ id: `profile_${offset}`,
           description: `${name}: ${route.provider}/${route.model}, reasoning ${route.reasoningEffort ?? 'default'}` })) })

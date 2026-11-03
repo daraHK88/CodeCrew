@@ -19,6 +19,7 @@
       decisions:
         autoSelectSkills: true
         autoRouteWorkers: true
+        reuseWorkerProfiles: true
         inspectFiles: true
         enabled: true
         model: typesafe/jev-1.14

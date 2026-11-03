@@ -1499,9 +1499,13 @@ export interface DecisionSettings {
   autoSelectSkills?: boolean
   /** Select an approved worker profile when the supervisor omits model_profile. */
   autoRouteWorkers?: boolean
+  /** Reuse configured reader/implementer/planner/reviewer routes for explicit brief objectives. */
+  reuseWorkerProfiles?: boolean
+  /** Optional loopback System One endpoint; empty uses OpenRouter. Local requests never send hosted credentials or images. */
+  localEndpoint?: string
   /** Allow explicitly selected workspace files to be assessed without returning their contents. */
   inspectFiles?: boolean
-  /** OpenRouter Decisions model identifier. */
+  /** Decision model identifier for the selected hosted or local service. */
   model: string
   /** Credential reference or environment name holding the OpenRouter API key. */
   apiKeyEnv: string

@@ -62,3 +62,15 @@ it('saves the UI role independently of the supervisor and chat model', async () 
   fireEvent.change(screen.getByLabelText(codingEn.uiProfile), { target: { value: 'planner' } })
   await waitFor(() => { expect(save).toHaveBeenCalledExactlyOnceWith('team', ['coding', 'uiProfile'], 'planner') })
 })
+
+it('saves a local decision endpoint independently of worker and chat models', async () => {
+  const save = mount()
+  fireEvent.blur(screen.getByLabelText(codingEn.localEndpoint), { target: { value: 'http://127.0.0.1:1234/v1/systemone' } })
+  await waitFor(() => { expect(save).toHaveBeenCalledWith('team', ['coding', 'decisions', 'localEndpoint'], 'http://127.0.0.1:1234/v1/systemone') })
+})
+
+it('can enable saved role reuse while the decision advisor is disabled', async () => {
+  const save = mount()
+  fireEvent.click(screen.getByLabelText(codingEn.reuseWorkerProfiles))
+  await waitFor(() => { expect(save).toHaveBeenCalledWith('team', ['coding', 'decisions', 'reuseWorkerProfiles'], true) })
+})

@@ -10,6 +10,35 @@ import type { CodingTeamSettings } from './index.ts'
 type Advisor = ReturnType<typeof installDecisionTool>
 
 /**
+ * Recognize mechanical objectives inside a structured assignment brief.
+ * @param task - Focused worker instructions.
+ * @returns Whether this is bounded routine work without substantial analysis.
+ */
+export function routineWorkerTask(task: string): boolean {
+  const objective = /^#{1,6}\s+Objective\s*\r?\n([\s\S]*?)(?=^#{1,6}\s|$)/im.exec(task)?.[1]?.trim()
+  if (objective === undefined) return routineDecisionTask(task)
+  return /^(?:read|list|show|open|cat|grep|find the file|run (?:the )?(?:tests?|build|lint|typecheck))\b/i.test(objective)
+    && !/\b(?:analy[sz]e|architecture|security|investigate|diagnos\w*|review|audit|plan|design)\b/i.test(objective)
+    && /^#{1,6}\s+Scope\s*\r?\n\s*None\b/im.test(task)
+}
+
+/**
+ * Reuse an approved saved role only for an explicit objective, without an inference request.
+ * @param task - Focused assignment brief, without the supervisor transcript.
+ * @param settings - Saved role models and routing opt-in.
+ * @returns Existing role name, or undefined when advice is still needed.
+ */
+export function savedWorkerProfile(task: string, settings: CodingTeamSettings): string | undefined {
+  if (!settings.decisions?.reuseWorkerProfiles) return undefined
+  if (routineWorkerTask(task) && settings.workerProfiles.reader !== undefined) return 'reader'
+  const objective = /^#{1,6}\s+Objective\s*\r?\n([\s\S]*?)(?=^#{1,6}\s|$)/im.exec(task)?.[1]?.trim() ?? task.trim()
+  const role = /^(?:[-*]\s*)?(?:review|audit)\b/i.test(objective) ? 'reviewer'
+    : /^(?:[-*]\s*)?(?:plan|design the architecture|decompose)\b/i.test(objective) ? 'planner'
+      : /^(?:[-*]\s*)?(?:implement|build|create|fix|update|add|remove|refactor|write|change)\b/i.test(objective) ? 'implementer' : undefined
+  return role !== undefined && settings.workerProfiles[role] !== undefined ? role : undefined
+}
+
+/**
  * Keep exact edits and mechanical lookups on the deterministic, zero-decision-call path.
  * @param task - Newly admitted assignment, not conversation history.
  * @returns Whether no model-based routing call is needed.
@@ -101,12 +130,15 @@ export async function routeDecisionWorkers(
   advisor: Advisor, settings: CodingTeamSettings, tasks: readonly string[], signal: AbortSignal,
 ): Promise<{ profileName: string; receipt?: string }[]> {
   const fallback = { profileName: settings.defaultWorkerProfile }
-  const routes: { profileName: string; receipt?: string }[] = tasks.map(() => ({ ...fallback }))
+  const saved = tasks.map(task => savedWorkerProfile(task, settings))
+  const routes: { profileName: string; receipt?: string }[] = saved.map(profileName => ({
+    profileName: profileName ?? fallback.profileName,
+  }))
   const policy = settings.decisions
   if (!policy?.enabled || !policy.autoRouteWorkers) return routes
   const profiles = Object.entries(settings.workerProfiles)
   if (profiles.length < 2 || profiles.length > policy.maxOptions) return routes
-  const pending = tasks.flatMap((task, index) => routineDecisionTask(task) ? [] : [{ task, index }])
+  const pending = tasks.flatMap((task, index) => saved[index] !== undefined || routineDecisionTask(task) ? [] : [{ task, index }])
   for (let start = 0; start < pending.length; start += policy.maxQuestions) {
     const batch = pending.slice(start, start + policy.maxQuestions)
     const input: DecisionInput = {

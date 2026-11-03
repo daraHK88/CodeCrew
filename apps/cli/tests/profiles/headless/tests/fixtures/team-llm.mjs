@@ -63,11 +63,6 @@ function textChunks(text) {
 
 function researcher(messages) {
   const names = calls(messages)
-  if (!names.includes('team_task_create')) {
-    return toolChunks([{ name: 'team_task_create', args: {
-      subject: 'Research', description: 'Collect the deterministic finding.', write_scopes: ['research'],
-    } }])
-  }
   if (!names.includes('team_task_update')) {
     return toolChunks([{ name: 'team_task_update', args: {
       task_id: 'task-1', expected_revision: 1, action: 'claim',
@@ -89,20 +84,6 @@ function implementer(messages) {
   const userText = messages.flatMap(message => message.role === 'user'
     ? message.content.filter(block => block.type === 'text').map(block => block.text)
     : []).join('\n')
-  if (!names.includes('team_task_create')) {
-    if (last.includes('team_task_get') && text.includes('"subject":"Research"')) {
-      return toolChunks([{ name: 'team_task_create', args: {
-        subject: 'Implementation',
-        description: 'Apply the deterministic finding.',
-        blocked_by: ['task-1'],
-        write_scopes: ['implementation'],
-      } }])
-    }
-    if (last.includes('wait_agent')) {
-      return toolChunks([{ name: 'team_task_get', args: { task_id: 'task-1' } }])
-    }
-    return toolChunks([{ name: 'wait_agent', args: { timeout_ms: 10000 } }])
-  }
   if (!hasTaskAction(messages, 'claim')) {
     if (last.includes('team_task_get') && text.includes('"status":"completed"')) {
       return toolChunks([{ name: 'team_task_update', args: {
@@ -138,6 +119,11 @@ function lead(messages) {
       script: 'return await agent("TEAM_WORKFLOW_CHILD");',
     } }])
   }
+  const created = names.filter(name => name === 'team_task_create').length
+  if (created < 2) return toolChunks([{ name: 'team_task_create', args: created === 0
+    ? { subject: 'Research', description: 'Collect the deterministic finding.', write_scopes: ['research'] }
+    : { subject: 'Implementation', description: 'Apply the deterministic finding.', blocked_by: ['task-1'], write_scopes: ['implementation'] },
+  }])
   const spawned = names.filter(name => name === 'spawn_teammate').length
   if (spawned === 0) {
     return toolChunks([{
@@ -165,7 +151,7 @@ function lead(messages) {
   if (last.includes('team_task_list')) {
     const completed = result.match(/"status":"completed"/gu)?.length ?? 0
     if (completed >= 2) return toolChunks([{ name: 'list_agents', args: {} }])
-    return toolChunks([{ name: 'team_task_list', args: {} }])
+    return toolChunks([{ name: 'wait_agent', args: { timeout_ms: 10000 } }])
   }
   if (last.includes('list_agents')) {
     const inactive = result.match(/"status":"inactive"/gu)?.length ?? 0
@@ -186,9 +172,14 @@ class TeamFixtureAdapter extends LlmAdapter {
     const workflowChild = initial?.content[0]?.text === 'TEAM_WORKFLOW_CHILD'
     const context = options.messages.findLast(message => message.source?.kind === 'runtime-context')
     const identity = context?.source.sections?.find(section => section.name === 'team:identity')?.text
-    if (!workflowChild && (!tools.includes('spawn_teammate') || !tools.includes('workflow'))) {
+    if (identity?.startsWith('You are the Team Lead named') && (!tools.includes('spawn_teammate') || !tools.includes('workflow'))) {
       throw new Error('Team profile is missing teammate or workflow tools')
     }
+    if (identity?.startsWith('You are teammate') && (tools.includes('spawn_teammate') || tools.includes('team_task_create'))) {
+      throw new Error('Leaf teammate exposes supervisor-only tools')
+    }
+    const lastTool = options.messages.findLast(message => message.role === 'tool')
+    if (lastTool?.isError) throw new Error(`Team fixture tool failed: ${latestToolText(options.messages)}`)
     let chunks
     if (workflowChild) chunks = textChunks('Fresh workflow child complete.')
     else if (identity?.startsWith('You are teammate "researcher".')) chunks = researcher(options.messages)

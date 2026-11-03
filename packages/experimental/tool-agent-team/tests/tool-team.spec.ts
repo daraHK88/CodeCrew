@@ -29,6 +29,7 @@ import * as toolTeam from '../src/index.ts'
 import { MemoryCredentials } from '../../../credentials/credentials/tests/memory.ts'
 import { decisionDefaults, decisionTextBytes, type DecisionAdvisor, type DecisionInput } from '../src/decisions.ts'
 import { routeWorkerAssignments } from '../src/worker-skills.ts'
+import { routeDecisionWorkers, savedWorkerProfile } from '../src/decision-routing.ts'
 import SkillRegistry from '@deepseek-ai/dsh-skill'
 import * as ToolSkill from '@deepseek-ai/dsh-tool-skill'
 
@@ -930,6 +931,29 @@ it('keeps decision calls optional and enforces the per-turn request budget', asy
   } finally { vi.unstubAllGlobals() }
 })
 
+it('uses the local advisor tool without a hosted credential service', async () => {
+  const args = { context: 'Read a file and list its exports.', questions: [{
+    id: 'route', question: 'Which responsibility?', options: [{ id: 'reader', description: 'Read only' }, { id: 'planner', description: 'Plan architecture' }],
+  }] }
+  const { ctx, lead, fiber } = await setup([
+    toolCallResponse('local-decision', 'coding_decide', args), textResponse('Continue with the selected responsibility.'),
+  ])
+  await fiber.dispose()
+  await ctx.plugin(toolTeam, { coding: { requireTaskBrief: false, defaultWorkerProfile: '', workerProfiles: {},
+    decisions: { ...decisionDefaults, enabled: true, model: 'local-router', localEndpoint: 'http://127.0.0.1:1235/v1/systemone' },
+  } } as never)
+  const fetcher = vi.fn<typeof fetch>().mockResolvedValue(Response.json({ model: 'local-router', answers: {
+    route: { type: 'choice', choice: 'reader', confidence: 1, probabilities: { reader: 1, planner: 0 } },
+  } }))
+  vi.stubGlobal('fetch', fetcher)
+  try {
+    await runTurn(lead, 'Exercise the local synthetic decision tool call.')
+    expect(fetcher).toHaveBeenCalledTimes(1)
+    expect(JSON.stringify(lead.session.snapshotEvents())).toContain('local-router')
+    expect(fetcher.mock.calls[0]?.[1]?.headers).not.toHaveProperty('Authorization')
+  } finally { vi.unstubAllGlobals() }
+})
+
 it('routes an unpinned substantial worker among approved profiles and preserves explicit choices', async () => {
   const { ctx, lead, fiber } = await setup(['hang', 'hang'])
   await ctx.plugin(MemoryCredentials, { OPENROUTER_API_KEY: 'fixture-key' })
@@ -1356,6 +1380,34 @@ it('packs ten worker routes by complete escaped request bytes instead of droppin
   expect(requests.length).toBeGreaterThan(1)
   expect(requests.flatMap(input => input.questions)).toHaveLength(10)
   expect(routes.every(route => route.profileName === 'reader')).toBe(true)
+})
+
+it('reuses saved responsibilities without classifier calls and retains explicit model choices', async () => {
+  const { ctx, lead } = await setup([])
+  const ask = vi.fn<DecisionAdvisor['ask']>()
+  const advisor: DecisionAdvisor = Object.assign(() => undefined, { ask })
+  const routes = await routeWorkerAssignments(ctx, lead, ['Implement the button', 'Review the patch', 'Plan the migration', 'Fix the layout'].map((task, index) => ({
+    task: `## Objective\n${task}\n## Inputs\nsrc/page.tsx\n## Scope\nsrc/page.tsx`,
+    skills: [], profileName: index === 3 ? 'reviewer' : undefined, supervisor: false,
+  })), advisor, { requireTaskBrief: true, defaultWorkerProfile: 'implementer', workerProfiles: {
+    implementer: { provider: 'mock', model: 'coder' }, reviewer: { provider: 'mock', model: 'reviewer' }, planner: { provider: 'mock', model: 'planner' },
+  }, decisions: { ...decisionDefaults, enabled: true, autoRouteWorkers: true, reuseWorkerProfiles: true } }, SIGNAL)
+  expect(routes.map(route => route.profileName)).toEqual(['implementer', 'reviewer', 'planner', 'reviewer'])
+  expect(ask).not.toHaveBeenCalled()
+})
+
+it('shares saved-role reuse with manual spawning and leaves missing or ambiguous roles unresolved', async () => {
+  const settings = { requireTaskBrief: false, defaultWorkerProfile: 'implementer', workerProfiles: {
+    implementer: { provider: 'mock', model: 'coder' }, reviewer: { provider: 'mock', model: 'reviewer' },
+  }, decisions: { ...decisionDefaults, reuseWorkerProfiles: true } }
+  const ask = vi.fn<DecisionAdvisor['ask']>()
+  const advisor: DecisionAdvisor = Object.assign(() => undefined, { ask })
+  expect(await routeDecisionWorkers(advisor, settings, ['Review the change', 'Implement the change'], SIGNAL))
+    .toEqual([{ profileName: 'reviewer' }, { profileName: 'implementer' }])
+  expect(ask).not.toHaveBeenCalled()
+  expect(savedWorkerProfile('Plan a migration', settings)).toBeUndefined()
+  expect(savedWorkerProfile('Investigate the unexplained failure', settings)).toBeUndefined()
+  expect(savedWorkerProfile('Review the change', { ...settings, decisions: { ...settings.decisions, reuseWorkerProfiles: false } })).toBeUndefined()
 })
 
 it('routes a six-section read-only lookup to the reader without a Jev call or the implementation default', async () => {
