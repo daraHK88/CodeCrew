@@ -65,7 +65,7 @@ jobs:
         with:
           bun-version: latest
 
-      - uses: pnpm/action-setup@v5.0.0
+      - uses: pnpm/action-setup@v6
         with:
           version: 11.28.5
           dest: ${{ runner.temp }}/setup-pnpm-${{ github.run_id }}-${{ github.run_attempt }}
@@ -167,7 +167,7 @@ jobs:
         with:
           bun-version: latest
 
-      - uses: pnpm/action-setup@v5.0.0
+      - uses: pnpm/action-setup@v6
         with:
           version: 11.28.5
           dest: ${{ runner.temp }}/setup-pnpm-${{ github.run_id }}-${{ github.run_attempt }}
@@ -216,7 +216,7 @@ jobs:
         with:
           bun-version: latest
 
-      - uses: pnpm/action-setup@v5.0.0
+      - uses: pnpm/action-setup@v6
         with:
           version: 11.28.5
           dest: ${{ runner.temp }}/setup-pnpm-${{ github.run_id }}-${{ github.run_attempt }}
@@ -266,7 +266,7 @@ jobs:
         with:
           bun-version: latest
 
-      - uses: pnpm/action-setup@v5.0.0
+      - uses: pnpm/action-setup@v6
         with:
           version: 11.28.5
           dest: ${{ runner.temp }}/setup-pnpm-${{ github.run_id }}-${{ github.run_attempt }}
@@ -391,7 +391,7 @@ jobs:
         with:
           bun-version: latest
 
-      - uses: pnpm/action-setup@v5.0.0
+      - uses: pnpm/action-setup@v6
         with:
           version: 11.28.5
           dest: ${{ runner.temp }}/setup-pnpm-${{ github.run_id }}-${{ github.run_attempt }}
@@ -507,7 +507,7 @@ jobs:
         with:
           bun-version: latest
 
-      - uses: pnpm/action-setup@v5.0.0
+      - uses: pnpm/action-setup@v6
         with:
           version: 11.28.5
           dest: ${{ runner.temp }}/setup-pnpm-${{ github.run_id }}-${{ github.run_attempt }}
