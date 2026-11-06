@@ -74,7 +74,7 @@ jobs:
           version: 11.28.5
           package_json_file: package.json
 
-      - uses: actions/setup-node@v7.0.0
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: pnpm
@@ -132,7 +132,7 @@ jobs:
           node:24-alpine
           node --test ./test/flock.test.js ./test/package-matrix.test.js
 
-      - uses: actions/setup-node@v7.0.0
+      - uses: actions/setup-node@v7
         with:
           node-version: 20
 
@@ -146,7 +146,7 @@ jobs:
           node:20-alpine
           node --test ./test/flock.test.js ./test/package-matrix.test.js
 
-      - uses: actions/setup-node@v7.0.0
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
 
@@ -160,7 +160,7 @@ jobs:
           node:22-alpine
           node --test ./test/flock.test.js ./test/package-matrix.test.js
 
-      - uses: actions/setup-node@v7.0.0
+      - uses: actions/setup-node@v7
         with:
           node-version: 26
 
